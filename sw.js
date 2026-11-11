@@ -1,6 +1,6 @@
 // Service worker do Estoque no Bolso.
 // Navegações sempre tentam buscar a versão mais recente; o cache é usado offline.
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = 'estoque-no-bolso-' + VERSION;
 const CORE = [
   './',

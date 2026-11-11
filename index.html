@@ -151,6 +151,9 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .hrow .dl{font-family:var(--f-num); font-weight:700; font-size:18px; text-align:right; font-variant-numeric:tabular-nums}
 .hrow .dl.in{color:var(--good)} .hrow .dl.out{color:var(--bad)}
 .hrow .af{color:var(--muted); font-size:12px; text-align:right}
+.hrow .hist-actions{grid-column:1/-1; display:flex; justify-content:flex-end; margin-top:7px}
+.hist-delete{border:1px solid var(--bad-line); background:transparent; color:var(--bad); border-radius:9px; min-height:34px; padding:5px 11px; font-size:12px; font-weight:700}
+.hist-delete:active{transform:translateY(1px)}
 
 .top-btns{display:flex; gap:8px; flex-shrink:0}
 .man{border-top:1px solid var(--line); padding-top:12px}
@@ -305,12 +308,14 @@ function sanitize(obj){
       lastPurchaseDate: isDateValue(p.lastPurchaseDate) ? p.lastPurchaseDate : null
     });
   });
-  (Array.isArray(obj.log) ? obj.log : []).slice(0, 200).forEach(function(l){
+  (Array.isArray(obj.log) ? obj.log : []).slice(0, 10000).forEach(function(l){
     if (!l || typeof l !== 'object') return;
     var t = Number(l.t);
     if (!isFinite(t)) return;
     var eventType = ['movement','low','normal'].indexOf(l.event) >= 0 ? l.event : 'movement';
     var item = {
+      eventId:clean(l.eventId, 50) || newId(),
+      sourceMovementId:clean(l.sourceMovementId, 50) || null,
       event:eventType, t:t, date:isDateValue(l.date) ? l.date : dateISO(t),
       id:clean(l.id, 30), name:clean(l.name, 80), unit:clean(l.unit, 8)
     };
@@ -318,6 +323,8 @@ function sanitize(obj){
       var d = Number(l.d), a = Number(l.after);
       if (!isFinite(d) || !isFinite(a)) return;
       item.d = d; item.after = a;
+      var minAtTime = Number(l.minAtTime);
+      if (isFinite(minAtTime) && minAtTime >= 0) item.minAtTime = minAtTime;
       item.kind = l.kind === 'in' || l.kind === 'out' ? l.kind : (d > 0 ? 'in' : 'out');
       item.enteredLow = !!l.enteredLow;
       item.leftLow = !!l.leftLow;
@@ -451,21 +458,26 @@ function renderBuy(){
   h += '</div><div class="grand tot"><span>Compra total estimada</span><b id="grand">' + fmtMoney(groups.reduce(function(s, g){ return s + groupCost(g); }, 0)) + '</b></div>';
   return h;
 }
+function historyDeleteButton(l){
+  return '<div class="hist-actions"><button type="button" class="hist-delete" data-act="delete-history" data-event-id="' + esc(l.eventId) + '">Excluir registro</button></div>';
+}
 function renderHist(){
   if (!state.log.length) return '<div class="empty"><b>Sem movimentos</b>As compras/entradas, saídas e alertas de estoque aparecerão aqui.</div>';
-  return '<div class="list">' + state.log.map(function(l){
+  var h = '<p class="hint">Excluir uma compra/entrada ou saída também desfaz o movimento no estoque. Alertas podem ser excluídos do histórico sem alterar a quantidade.</p><div class="list">';
+  h += state.log.map(function(l){
     var dateLabel = fmtISODate(l.date);
     if (l.event === 'low') {
-      return '<div class="hrow status-low"><span class="nm">Entrou no vermelho · ' + esc(l.name) + '</span><span class="tag">Alerta de estoque</span><span class="dt">' + dateLabel + '</span><span class="af">Estoque: ' + fmtQty(l.qty) + ' ' + esc(l.unit) + ' · mínimo: ' + fmtQty(l.min) + '</span></div>';
+      return '<div class="hrow status-low"><span class="nm">Entrou no vermelho · ' + esc(l.name) + '</span><span class="tag">Alerta de estoque</span><span class="dt">' + dateLabel + '</span><span class="af">Estoque: ' + fmtQty(l.qty) + ' ' + esc(l.unit) + ' · mínimo: ' + fmtQty(l.min) + '</span>' + historyDeleteButton(l) + '</div>';
     }
     if (l.event === 'normal') {
-      return '<div class="hrow status-normal"><span class="nm">Estoque normalizado · ' + esc(l.name) + '</span><span class="tag">Alerta resolvido</span><span class="dt">' + dateLabel + '</span><span class="af">Estoque: ' + fmtQty(l.qty) + ' ' + esc(l.unit) + '</span></div>';
+      return '<div class="hrow status-normal"><span class="nm">Estoque normalizado · ' + esc(l.name) + '</span><span class="tag">Alerta resolvido</span><span class="dt">' + dateLabel + '</span><span class="af">Estoque: ' + fmtQty(l.qty) + ' ' + esc(l.unit) + '</span>' + historyDeleteButton(l) + '</div>';
     }
     var inn = l.kind === 'in' || l.d > 0;
     var label = inn ? 'Compra / entrada · ' : 'Saída de estoque · ';
     var extra = l.enteredLow ? '<span class="eventnote">Este movimento fez o produto entrar no vermelho.</span>' : (l.leftLow ? '<span class="eventnote" style="color:var(--good)">Este movimento retirou o produto do vermelho.</span>' : '');
-    return '<div class="hrow"><span class="nm">' + label + esc(l.name) + '</span><span class="dl ' + (inn ? 'in' : 'out') + '">' + (inn ? '+' : '−') + fmtQty(Math.abs(l.d)) + ' ' + esc(l.unit) + '</span><span class="dt">' + dateLabel + '</span><span class="af">ficou com ' + fmtQty(l.after) + ' ' + esc(l.unit) + '</span>' + extra + '</div>';
-  }).join('') + '</div>';
+    return '<div class="hrow"><span class="nm">' + label + esc(l.name) + '</span><span class="dl ' + (inn ? 'in' : 'out') + '">' + (inn ? '+' : '−') + fmtQty(Math.abs(l.d)) + ' ' + esc(l.unit) + '</span><span class="dt">' + dateLabel + '</span><span class="af">ficou com ' + fmtQty(l.after) + ' ' + esc(l.unit) + '</span>' + extra + historyDeleteButton(l) + '</div>';
+  }).join('');
+  return h + '</div>';
 }
 function render(){
   renderStats(); renderBanners(); renderTabs();
@@ -555,25 +567,118 @@ function showDemo(){
 }
 
 /* ---------- ações ---------- */
+function nextLogTime(){
+  var latest = 0;
+  state.log.forEach(function(item){ if (item.t > latest) latest = item.t; });
+  return Math.max(Date.now(), latest + 1);
+}
 function applyMove(id, kind, amount, movementDate){
   var p = find(id), wasLow = isLow(p), d = kind === 'in' ? amount : -amount;
-  var timestamp = Date.now();
+  var timestamp = nextLogTime();
   p.qty = r3(p.qty + d);
   var isLowNow = isLow(p);
   if (kind === 'in') p.lastPurchaseDate = movementDate;
   if (!wasLow && isLowNow) p.lowSinceDate = movementDate;
   else if (wasLow && !isLowNow) p.lowSinceDate = null;
   state.log.unshift({
-    event:'movement', t:timestamp, date:movementDate, id:p.id, name:p.name, unit:p.unit,
-    kind:kind, d:d, after:p.qty, enteredLow:!wasLow && isLowNow, leftLow:wasLow && !isLowNow
+    eventId:newId(), event:'movement', t:timestamp, date:movementDate, id:p.id, name:p.name, unit:p.unit,
+    kind:kind, d:d, after:p.qty, minAtTime:p.min, enteredLow:!wasLow && isLowNow, leftLow:wasLow && !isLowNow
   });
-  state.log.length = Math.min(state.log.length, 200);
   delete override[id];
   save();
 }
-function addStatusLog(eventType, p, eventDate){
-  state.log.unshift({event:eventType, t:Date.now(), date:eventDate, id:p.id, name:p.name, unit:p.unit, qty:p.qty, min:p.min});
-  state.log.length = Math.min(state.log.length, 200);
+function addStatusLog(eventType, p, eventDate, sourceMovementId){
+  state.log.unshift({eventId:newId(), sourceMovementId:sourceMovementId || null, event:eventType, t:nextLogTime(), date:eventDate, id:p.id, name:p.name, unit:p.unit, qty:p.qty, min:p.min});
+}
+
+function refreshProductDates(p, removedEntry){
+  if (!p) return;
+  var related = state.log.filter(function(item){ return item.id === p.id; }).slice().sort(function(a, b){ return a.t - b.t; });
+  var sawTransition = false, activeLowDate = null;
+  related.forEach(function(item){
+    if (item.event === 'low') { sawTransition = true; activeLowDate = item.date; }
+    else if (item.event === 'normal') { sawTransition = true; activeLowDate = null; }
+    else if (item.event === 'movement' && item.enteredLow) { sawTransition = true; activeLowDate = item.date; }
+    else if (item.event === 'movement' && item.leftLow) { sawTransition = true; activeLowDate = null; }
+  });
+  if (!isLow(p)) p.lowSinceDate = null;
+  else if (sawTransition) p.lowSinceDate = activeLowDate;
+  else if (removedEntry && (removedEntry.event === 'low' || (removedEntry.event === 'movement' && removedEntry.enteredLow))) p.lowSinceDate = null;
+
+  var latestPurchase = null;
+  related.forEach(function(item){
+    if (item.event === 'movement' && (item.kind === 'in' || item.d > 0) && (!latestPurchase || item.t > latestPurchase.t)) latestPurchase = item;
+  });
+  p.lastPurchaseDate = latestPurchase ? latestPurchase.date : null;
+}
+
+function recalculateMovementAlerts(p){
+  state.log.forEach(function(item){
+    if (item.event !== 'movement' || item.id !== p.id) return;
+    var minimum = Number(item.minAtTime);
+    if (!isFinite(minimum) || minimum < 0) minimum = p.min;
+    var after = Number(item.after), delta = Number(item.d);
+    var before = r3(after - delta);
+    item.enteredLow = before >= minimum && after < minimum;
+    item.leftLow = before < minimum && after >= minimum;
+  });
+}
+
+function deleteHistoryEntry(eventId){
+  var entry = state.log.filter(function(item){ return item.eventId === eventId; })[0];
+  if (!entry) { toast('Esse registro não foi encontrado.'); return; }
+  var p = find(entry.id);
+
+  if (entry.event === 'movement' && p) {
+    var entryIndex = state.log.findIndex(function(item){ return item.eventId === eventId; });
+    function happenedAfter(item){
+      var itemIndex = state.log.indexOf(item);
+      return item.t > entry.t || (item.t === entry.t && itemIndex < entryIndex);
+    }
+    var correctedQty = r3(p.qty - entry.d);
+    if (correctedQty < -0.0005) {
+      toast('Não é possível excluir: há saídas posteriores que dependem desta entrada. Revise essas saídas primeiro.');
+      return;
+    }
+    var laterWouldGoNegative = state.log.some(function(item){
+      return item.event === 'movement' && item.id === p.id && happenedAfter(item) && r3(item.after - entry.d) < -0.0005;
+    });
+    if (laterWouldGoNegative) {
+      toast('Não é possível excluir: uma movimentação posterior ficaria com estoque negativo. Revise o histórico primeiro.');
+      return;
+    }
+    var movementLabel = entry.kind === 'in' || entry.d > 0 ? 'compra/entrada' : 'saída';
+    if (!window.confirm('Excluir esta ' + movementLabel + ' de ' + fmtQty(Math.abs(entry.d)) + ' ' + entry.unit + '? O estoque será ajustado e o registro sairá do histórico.')) return;
+
+    var wasLow = isLow(p);
+    p.qty = Math.max(0, correctedQty);
+    state.log.forEach(function(item){
+      if (item.event === 'movement' && item.id === p.id && happenedAfter(item)) item.after = r3(item.after - entry.d);
+    });
+    state.log = state.log.filter(function(item){ return item.eventId !== eventId && item.sourceMovementId !== eventId; });
+    recalculateMovementAlerts(p);
+    var isLowNow = isLow(p);
+    if (wasLow && !isLowNow) {
+      p.lowSinceDate = null;
+      addStatusLog('normal', p, todayISO());
+      refreshProductDates(p, null);
+    } else {
+      refreshProductDates(p, entry);
+      if (!wasLow && isLowNow && !p.lowSinceDate) {
+        p.lowSinceDate = todayISO();
+        addStatusLog('low', p, todayISO());
+        refreshProductDates(p, null);
+      }
+    }
+    delete override[p.id];
+    save(); render(); toast('Movimento excluído e estoque ajustado.');
+    return;
+  }
+
+  if (!window.confirm('Excluir este registro do histórico? A quantidade do estoque não será alterada.')) return;
+  state.log = state.log.filter(function(item){ return item.eventId !== eventId && item.sourceMovementId !== eventId; });
+  if (p) refreshProductDates(p, entry);
+  save(); render(); toast('Registro removido do histórico.');
 }
 function copyText(text, okMsg){
   function fallback(){
@@ -603,6 +708,7 @@ document.addEventListener('click', function(e){
   else if (act === 'new') productSheet(null);
   else if (act === 'edit') productSheet(find(el.dataset.id));
   else if (act === 'mov') movSheet(find(el.dataset.id), el.dataset.kind);
+  else if (act === 'delete-history') deleteHistoryEntry(el.dataset.eventId);
   else if (act === 'more') { wipeArmed = false; moreSheet(); }
   else if (act === 'manual') manualSheet();
   else if (act === 'show-demo') showDemo();
@@ -628,7 +734,10 @@ document.addEventListener('click', function(e){
   }
   else if (act === 'del') {
     if (el.dataset.armed !== '1') { el.dataset.armed = '1'; el.textContent = 'Toque de novo para excluir'; return; }
-    state.products = state.products.filter(function(p){ return p.id !== el.dataset.id; }); delete override[el.dataset.id]; save(); closeSheet(); render(); toast('Produto excluído');
+    var deletedProductId = el.dataset.id;
+    state.products = state.products.filter(function(p){ return p.id !== deletedProductId; });
+    state.log = state.log.filter(function(item){ return item.id !== deletedProductId; });
+    delete override[deletedProductId]; save(); closeSheet(); render(); toast('Produto e seu histórico foram excluídos');
   }
 });
 $('overlay').addEventListener('click', function(e){ if (e.target === $('overlay')) closeSheet(); });
