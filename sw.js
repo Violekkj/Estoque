@@ -1,7 +1,8 @@
-// Service worker do Estoque no Bolso — v13.
+// Service worker do Estoque no Bolso — v14.
 // Todos os caminhos são relativos ao diretório do próprio worker, compatíveis com /Estoque/.
-const VERSION = 'v13';
+const VERSION = 'v14';
 const CACHE = 'estoque-no-bolso-' + VERSION;
+
 const CORE = [
   './',
   './index.html',
@@ -18,7 +19,8 @@ const CORE = [
   './src/data/storage.js',
   './src/config/supabase-config.js',
   './src/cloud/supabase-client.js',
-  './src/cloud/auth.js'
+  './src/cloud/auth.js',
+  './src/cloud/sync-engine.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -43,7 +45,9 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  const isGoogleFont = /^fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
+  const isGoogleFont =
+  url.hostname === 'fonts.googleapis.com' ||
+  url.hostname === 'fonts.gstatic.com';
   if (url.origin !== self.location.origin && !isGoogleFont) return;
 
   // Navegação: rede primeiro; cache como fallback offline.
