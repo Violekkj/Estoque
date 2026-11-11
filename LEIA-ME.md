@@ -1,56 +1,68 @@
-# Estoque no Bolso (PWA)
+# Estoque no Bolso — v11 | Fases 0 e 1
 
-Esta pasta é o app completo. Para o cliente instalar no celular, ela precisa ficar
-publicada num endereço com **https://**. Todas as hospedagens abaixo já dão isso.
+## Auditoria e proteção (Fase 0)
 
-## 1. Publicar (escolha uma)
+- A versão v10 foi preservada integralmente no arquivo separado `Planilha-backup-pre-refatoracao-v10.zip`.
+- A chave de dados antiga `estoque-no-bolso-v1` foi mantida.
+- O formato de produtos e histórico foi mantido nesta etapa; a função `sanitize` continua validando e normalizando os dados legados.
 
-Suba a pasta inteira, com todos os arquivos, sem mudar os nomes.
+## Modularização (Fase 1)
 
-- **Netlify:** crie uma conta gratuita e use a opção de enviar uma pasta arrastando
-  (Netlify Drop). É a mais rápida.
-- **Cloudflare Pages:** crie um projeto e envie os arquivos pelo upload direto.
-- **GitHub Pages:** coloque os arquivos num repositório e ative o Pages nas configurações.
+- `assets/styles/app.css`: estilos extraídos do HTML.
+- `src/app.js`: inicialização, interface, renderização e eventos.
+- `src/core/utils.js`: funções puras de formatação, datas, compras e utilitários.
+- `src/data/state-schema.js`: validação, normalização e dados de demonstração.
+- `src/data/indexed-db.js`: abertura do banco, transações e stores do IndexedDB.
+- `src/data/storage.js`: repositório local, migração e compatibilidade.
 
-No fim você recebe um endereço, algo como `https://seu-nome.netlify.app`.
-Teste abrindo esse endereço no Chrome do seu celular.
+O projeto usa módulos JavaScript nativos (`type="module"`), sem exigir etapa de build para publicar no GitHub Pages.
 
-## 2. Instalar no Android
+## IndexedDB e migração
 
-1. Abra o endereço no **Chrome**.
-2. Toque nos três pontinhos e escolha **Instalar app** (ou **Adicionar à tela inicial**).
-3. O ícone aparece na tela inicial e o app abre em tela cheia.
+O banco `estoque-no-bolso-db` cria quatro stores:
 
-Na primeira abertura é preciso estar com internet. Depois disso o app abre sem sinal.
+- `snapshots`: estado principal do estoque (`main`).
+- `drafts`: dados guardados ao alternar para o modo de demonstração.
+- `outbox`: estrutura inicial para uma futura fila de sincronização.
+- `meta`: metadados e controle de versão.
 
-## 3. Gerar o APK ou publicar na Google Play (opcional)
+Na primeira abertura, o aplicativo lê a chave antiga `estoque-no-bolso-v1` do `localStorage`, aplica a validação/normalização existente e grava o estado no IndexedDB. Durante a transição, mantém também uma cópia no `localStorage` como fallback e compatibilidade. As duas cópias recebem marcação de data/hora para selecionar a versão mais recente na inicialização.
 
-1. Com o app já publicado, abra **pwabuilder.com** e cole o endereço.
-2. Escolha **Android** e baixe o pacote.
-3. Para a Play Store é preciso uma conta de desenvolvedor Google (taxa única).
-4. Mandar o APK direto pelo WhatsApp também funciona, mas o cliente precisa liberar
-   "instalar de fontes desconhecidas".
+O rascunho `estoque-no-bolso-v1-meus-dados` também é importado para o IndexedDB. Preferência de tema e marcação de primeira utilização continuam em `localStorage` por serem preferências pequenas do navegador.
 
-## 4. iPhone
+## Limites desta versão
 
-No **Safari**: botão Compartilhar, depois **Adicionar à Tela de Início**.
-No iPhone o app instalado guarda os dados separados do Safari. Quem já cadastrou
-produtos no navegador deve usar **Mais, Backup** antes e **Restaurar backup** depois
-de abrir o app instalado.
+Esta versão ainda **não** possui Supabase, login, nuvem, sincronização entre dispositivos, backup remoto ou notificações push. A store `outbox` está preparada como estrutura, mas não envia operações. IndexedDB melhora o armazenamento local, mas continua pertencendo ao navegador/dispositivo; por isso, até implementarmos nuvem e recuperação, continue usando a exportação manual do backup.
 
-## 5. Publicar uma atualização
+## Como testar localmente no Windows
 
-Troque os arquivos na hospedagem e, no `sw.js`, aumente o número em
-`const VERSION = 'v1'` (para `v2`, `v3`...). Sem isso, os celulares podem continuar
-mostrando a versão antiga. O cliente vê a versão nova na segunda vez que abrir o app.
+Como o projeto agora usa módulos JavaScript, não abra `index.html` diretamente por `file://` no Explorer. Os navegadores restringem módulos carregados dessa forma.
 
-## 6. Testar no seu computador
+Opções:
 
-Dentro desta pasta, rode `python3 -m http.server 8000` e abra `http://localhost:8000`.
+1. Dê dois cliques em `INICIAR-LOCAL.bat` (requer Python instalado); ou
+2. No terminal do VS Code, dentro da pasta do projeto, execute:
 
-## Importante para vender
+```powershell
+py -m http.server 8000
+```
 
-- Os dados ficam **no celular de cada cliente** (não há login nem sincronização entre
-  aparelhos). Se o cliente limpar os dados do navegador ou trocar de celular, perde tudo
-  sem o backup. Oriente a usar **Mais, Copiar backup** de vez em quando.
-- O app já abre com dados de exemplo. Peça ao cliente para tocar em **Começar do zero**.
+Depois abra `http://localhost:8000`. Se o comando `py` não existir, tente `python -m http.server 8000` ou use a extensão Live Server do VS Code.
+
+## Publicação no GitHub Pages
+
+**Envie a estrutura completa**, não somente `index.html` e `sw.js`. Preserve as pastas `assets/` e `src/`, pois o HTML importa os módulos e o CSS desses caminhos.
+
+No terminal, na pasta do projeto:
+
+```bash
+git add index.html sw.js assets src LEIA-ME.md INICIAR-LOCAL.bat
+git commit -m "Refatora app e prepara IndexedDB"
+git push
+```
+
+O Service Worker foi atualizado para `v11` e pré-armazena o HTML, o CSS e todos os módulos necessários para a abertura offline.
+
+## Backup de segurança
+
+O arquivo separado `Planilha-backup-pre-refatoracao-v10.zip` contém os arquivos v10 originais, antes da refatoração. Guarde esse arquivo fora da pasta do repositório.

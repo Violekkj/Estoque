@@ -1,6 +1,6 @@
 // Service worker do Estoque no Bolso.
 // Navegações sempre tentam buscar a versão mais recente; o cache é usado offline.
-const VERSION = 'v9';
+const VERSION = 'v11';
 const CACHE = 'estoque-no-bolso-' + VERSION;
 const CORE = [
   './',
@@ -9,7 +9,13 @@ const CORE = [
   'icon-192.png',
   'icon-512.png',
   'icon-maskable-512.png',
-  'apple-touch-icon.png'
+  'apple-touch-icon.png',
+  'assets/styles/app.css',
+  'src/app.js',
+  'src/core/utils.js',
+  'src/data/state-schema.js',
+  'src/data/indexed-db.js',
+  'src/data/storage.js'
 ];
 
 self.addEventListener('install', (event) => {

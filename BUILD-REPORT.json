@@ -1,0 +1,15 @@
+{
+  "release": "v11",
+  "basis": "Estoque-no-Bolso-v10.zip",
+  "legacy_local_storage_key_preserved": true,
+  "indexeddb_stores": [
+    "snapshots",
+    "drafts",
+    "outbox",
+    "meta"
+  ],
+  "module_entry": "src/app.js",
+  "stylesheet": "assets/styles/app.css",
+  "service_worker_version": "v11",
+  "cloud_sync_enabled": false
+}
