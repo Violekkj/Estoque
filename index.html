@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Estoque no Bolso</title>
-<!-- Release v12: robust startup fallback, relative paths, and modular IndexedDB foundation -->
+<!-- Release v14: local-first synchronization engine and cloud queue -->
 <meta name="description" content="Controle de estoque simples: entrada e saída, alerta de mínimo, lista de compras no WhatsApp e valor parado.">
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#EDF0F4" id="themeColorMeta">
@@ -38,7 +38,7 @@
 </div>
 <div class="col">
   <header class="top">
-    <div class="top-row"><h1 id="title">Estoque no Bolso</h1><div class="top-btns"><button class="ghost" data-act="manual">Manual</button><button class="ghost backup-top-btn" data-act="backup" aria-label="Backup">Backup</button><button class="ghost" data-act="more">Mais</button></div></div>
+    <div class="top-row"><div class="top-title-group"><h1 id="title">Estoque no Bolso</h1><div id="syncStatus" class="sync-status" data-state="local" role="status" aria-live="polite"><span class="sync-dot" aria-hidden="true"></span><span class="sync-label">Somente neste aparelho</span></div></div><div class="top-btns"><button class="ghost" data-act="manual">Manual</button><button class="ghost backup-top-btn" data-act="backup" aria-label="Backup">Backup</button><button class="ghost" data-act="more">Mais</button></div></div>
     <div class="hero">
       <div class="lbl">Valor parado em estoque</div>
       <div class="val" id="totalVal">R$ 0,00</div>

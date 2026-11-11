@@ -1,30 +1,40 @@
 {
-  "release": "v13",
-  "basis": "Estoque-no-Bolso-v12-corrigido.zip",
+  "release": "v14",
+  "phase": "4 - local-first sync engine",
+  "base": "Estoque-no-Bolso-v13-fase3",
+  "entry": "./index.html",
   "module_entry": "./src/app.js",
-  "stylesheet": "./assets/styles/app.css",
-  "service_worker_version": "v13",
+  "service_worker_version": "v14",
   "github_pages_base": "/Estoque/",
   "supabase": {
-    "schema_migration": "./supabase/migrations/202611110001_initial_store_schema.sql",
-    "auth_ui": "Mais > Conta e acesso",
-    "auth_methods": [
-      "email_password_sign_up",
-      "email_password_sign_in",
-      "sign_out"
-    ],
-    "rls_enabled_for_all_public_tables": true,
-    "client_delete_grants": false,
-    "data_sync_enabled": false,
-    "phase4_required": true
+    "project_ref": "qpbhntswhhfmppzgopti",
+    "project_url_configured": true,
+    "publishable_key_configured": true,
+    "secret_key_in_frontend": false,
+    "base_migration": "already applied by project owner",
+    "phase4_additive_migration": "supabase/migrations/202611110002_sync_engine.sql",
+    "live_migration_executed_by_assistant": false,
+    "live_integration_tested_by_assistant": false
+  },
+  "sync": {
+    "indexeddb_database": "estoque-no-bolso-db",
+    "indexeddb_version": 2,
+    "queue_store": "sync_queue",
+    "idempotency": "UUID per stock movement mapped to stock_movements.idempotency_key",
+    "initial_sync": "uploads local inventory to empty cloud; otherwise cloud remains canonical for known client IDs",
+    "offline_retry": ["online", "focus", "visibilitychange", "60-second foreground poll"],
+    "remote_restore": "downloads products, stock movements and low/normal status audit events",
+    "conflict_policy": "server row lock and transaction for quantity operations; last accepted server update for metadata",
+    "not_yet_synced": ["purchases and purchase_items formal orders", "trash restore UI", "continuous execution when browser suspends app"]
   },
   "verification": {
-    "javascript_syntax": "passed (node --input-type=module --check on all local modules)",
-    "relative_imports": "passed (all relative module imports resolve)",
-    "service_worker_core": "passed (all cached local resources exist)",
-    "hardcoded_old_pages_url": "none found",
-    "live_supabase_migration": "not run; requires user's Supabase project",
-    "browser_auth_test": "not run; requires project URL and publishable key"
-  },
-  "notes": "Phase 3 schema/auth scaffold. Product/purchase/history synchronization remains disabled until Phase 4. Only Supabase publishable key belongs in frontend; never service_role/secret."
+    "javascript_module_syntax": "passed with node --input-type=module --check",
+    "relative_module_imports": "passed",
+    "service_worker_core_assets": "passed",
+    "html_relative_assets": "passed",
+    "service_worker_version": "v14",
+    "browser_runtime_test": "not run",
+    "sql_parser_validation": "not available in build environment",
+    "live_supabase_test": "requires owner to run additive migration and test project"
+  }
 }

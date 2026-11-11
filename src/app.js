@@ -5,12 +5,16 @@ import {
 } from "./core/utils.js";
 import { sanitize, demoState } from "./data/state-schema.js";
 import {
-  loadAppState, saveAppState, loadDraft, saveDraft, isIndexedDBAvailable, isLocalStorageAvailable
+  loadAppState, saveAppState, loadDraft, saveDraft, isIndexedDBAvailable, isLocalStorageAvailable, restoreFallbackSyncQueue
 } from "./data/storage.js";
 import { isSupabaseConfigured } from "./cloud/supabase-client.js";
 import {
   getCloudAccount, signInWithPassword, signUpWithPassword, signOutFromCloud
 } from "./cloud/auth.js";
+import {
+  buildSyncOperations, ensureStateOperationIds, initSyncEngine, connectStoreAndSync,
+  getActiveStoreId, getSyncStatus, scheduleSync, markSignedOut, refreshSyncStatus
+} from "./cloud/sync-engine.js";
 
 'use strict';
 
@@ -56,24 +60,72 @@ else updateThemeColor();
 var state, override = {}, tab = 'prod', onlyLow = false, search = '', persisted = true;
 var indexedDbReady = true, storageFallback = false;
 var saveChain = Promise.resolve();
+var lastCommittedSnapshot = null;
 var STASH_KEY = KEY + '-meus-dados', stashMem = null;
 
 function save(){
+  ensureStateOperationIds(state);
   var normalized = sanitize(state);
   if (normalized) state = normalized;
   var snapshot = JSON.parse(JSON.stringify(state));
   renderBanners();
-  saveChain = saveChain.then(function(){ return saveAppState(KEY, snapshot); }).then(function(result){
+  saveChain = saveChain.then(async function(){
+    var operations = buildSyncOperations(lastCommittedSnapshot, snapshot, getActiveStoreId());
+    var result = await saveAppState(KEY, snapshot, operations);
     persisted = !!result.ok;
     indexedDbReady = !!result.indexedDBOk;
     storageFallback = !indexedDbReady && !!result.localStorageOk;
+    if (result.indexedDBOk && result.queuePersisted) {
+      lastCommittedSnapshot = JSON.parse(JSON.stringify(snapshot));
+      if (operations.length) {
+        refreshSyncStatus();
+        scheduleSync();
+      }
+    }
     renderBanners();
+    renderSyncStatus(getSyncStatus());
   }).catch(function(error){
     console.error('Falha ao salvar o estoque:', error);
     persisted = false;
     storageFallback = false;
     renderBanners();
   });
+}
+
+function renderSyncStatus(status){
+  var root = $('syncStatus');
+  if (!root) return;
+  status = status || getSyncStatus();
+  root.dataset.state = status.state || 'local';
+  var label = root.querySelector('.sync-label');
+  var count = Number(status.pending) || 0;
+  var text = status.message || 'Somente neste aparelho';
+  if (status.state === 'syncing') text = count ? 'Sincronizando ' + count + ' alteração(ões)...' : 'Conectando à nuvem...';
+  else if (status.state === 'synced') text = 'Online · Tudo sincronizado';
+  else if (status.state === 'offline') text = 'Offline — alterações salvas neste dispositivo';
+  else if (status.state === 'pending') text = count + ' alteração(ões) aguardando envio';
+  if (label) label.textContent = text;
+  root.title = text;
+}
+
+async function applyCloudSnapshot(remoteState){
+  await saveChain;
+  var normalized = sanitize(remoteState);
+  if (!normalized) throw new Error('A cópia recebida da nuvem não passou pela validação local.');
+  state = normalized;
+  ensureStateOperationIds(state);
+  lastCommittedSnapshot = JSON.parse(JSON.stringify(state));
+  var result = await saveAppState(KEY, state, []);
+  persisted = !!result.ok;
+  indexedDbReady = !!result.indexedDBOk;
+  storageFallback = !indexedDbReady && !!result.localStorageOk;
+  render();
+}
+
+async function activateCloudStore(store){
+  ensureStateOperationIds(state);
+  var localSnapshot = JSON.parse(JSON.stringify(state));
+  return connectStoreAndSync(store, localSnapshot);
 }
 
 /* Guarda os dados reais enquanto a pessoa vê o exemplo. */
@@ -260,10 +312,15 @@ async function renderCloudAccount(messageText){
     var account = await getCloudAccount();
     if (!document.getElementById('cloudAccountContent')) return;
     if (account.session && account.store) {
+      var syncResult = null;
+      try { syncResult = await activateCloudStore(account.store); }
+      catch (syncError) { console.warn('Conta autenticada, mas a sincronização não foi concluída:', syncError); }
+      var syncStatus = getSyncStatus();
       root.innerHTML = '<div class="cloud-account-card"><div class="cloud-account-status"><span class="cloud-dot online"></span><b>Conta autenticada</b></div>' +
         '<div class="cloud-account-name">' + esc(account.store.name) + '</div>' +
         '<div class="cloud-account-email">' + esc(account.session.user.email || '') + '</div>' +
-        '<div class="banner warn"><span>A conta e o estabelecimento estão vinculados. A sincronização dos produtos será ativada na Fase 4; seus dados continuam armazenados neste aparelho.</span></div>' +
+        '<div class="banner"><span>' + esc(syncStatus.message || (syncResult && syncResult.synced ? 'Tudo sincronizado.' : 'A sincronização está sendo preparada.')) + '</span></div>' +
+        '<button type="button" class="btn plain" data-cloud-action="sync-now">Sincronizar agora</button>' +
         '<button type="button" class="btn plain" data-cloud-action="signout">Sair da conta</button></div>';
     } else {
       root.innerHTML = '<p class="sub">Entre na sua conta ou crie o acesso do proprietário do comércio.</p>' +
@@ -275,7 +332,7 @@ async function renderCloudAccount(messageText){
         '<button type="button" class="btn primary" data-cloud-action="signin">Entrar</button>' +
         '<button type="button" class="btn plain" data-cloud-action="signup">Criar conta e estabelecimento</button>' +
         '</form>' +
-        '<p class="cloud-footnote">Nesta fase, a autenticação e o cadastro do estabelecimento já podem ser testados. A sincronização de produtos, compras e histórico será ligada na próxima fase.</p>';
+        '<p class="cloud-footnote">Depois de entrar, produtos e movimentações deste aparelho são enviados uma única vez; alterações seguintes entram na fila automática.</p>'; 
     }
     if (messageText) {
       var note = document.createElement('div');
@@ -293,9 +350,18 @@ async function handleCloudAction(action, button){
   var root = $('cloudAccountContent');
   if (!root) return;
   if (action === 'retry') { renderCloudAccount(); return; }
+  if (action === 'sync-now') {
+    button.disabled = true;
+    try {
+      var activeAccount = await getCloudAccount();
+      if (!activeAccount.session || !activeAccount.store) throw new Error('Entre novamente para sincronizar.');
+      await renderCloudAccount('Verificação de sincronização concluída.');
+    } catch (syncError) { await renderCloudAccount('Não foi possível sincronizar: ' + (syncError.message || 'erro desconhecido')); }
+    return;
+  }
   if (action === 'signout') {
     button.disabled = true;
-    try { await signOutFromCloud(); await renderCloudAccount('Você saiu da conta. Os dados locais deste aparelho foram preservados.'); }
+    try { await signOutFromCloud(); await markSignedOut(); renderSyncStatus(getSyncStatus()); await renderCloudAccount('Você saiu da conta. Os dados locais deste aparelho foram preservados.'); }
     catch (error) { await renderCloudAccount('Não foi possível sair: ' + (error.message || 'erro desconhecido')); }
     return;
   }
@@ -322,13 +388,13 @@ async function handleCloudAction(action, button){
   try {
     if (action === 'signin') {
       var signedIn = await signInWithPassword(email, password);
-      await renderCloudAccount('Acesso confirmado para ' + signedIn.store.name + '. Seus dados locais ainda não foram enviados à nuvem.');
+      await renderCloudAccount('Acesso confirmado para ' + signedIn.store.name + '.');
     } else {
       var created = await signUpWithPassword({ email: email, password: password, storeName: storeName });
       if (created.requiresEmailConfirmation) {
         await renderCloudAccount('Cadastro iniciado! Confira seu e-mail para confirmar a conta e depois volte aqui para entrar.');
       } else {
-        await renderCloudAccount('Conta e estabelecimento criados. A sincronização dos dados será ativada na Fase 4.');
+        await renderCloudAccount('Conta e estabelecimento criados. A sincronização inicial foi executada.');
       }
     }
   } catch (error) {
@@ -460,14 +526,14 @@ function applyMove(id, kind, amount, movementDate){
   if (!wasLow && isLowNow) p.lowSinceDate = movementDate;
   else if (wasLow && !isLowNow) p.lowSinceDate = null;
   state.log.unshift({
-    eventId:newId(), event:'movement', t:timestamp, date:movementDate, id:p.id, name:p.name, unit:p.unit,
+    eventId:newId(), operationId:(crypto.randomUUID ? crypto.randomUUID() : null), event:'movement', t:timestamp, date:movementDate, id:p.id, name:p.name, unit:p.unit,
     kind:kind, d:d, after:p.qty, minAtTime:p.min, enteredLow:!wasLow && isLowNow, leftLow:wasLow && !isLowNow
   });
   delete override[id];
   save();
 }
 function addStatusLog(eventType, p, eventDate, sourceMovementId){
-  state.log.unshift({eventId:newId(), sourceMovementId:sourceMovementId || null, event:eventType, t:nextLogTime(), date:eventDate, id:p.id, name:p.name, unit:p.unit, qty:p.qty, min:p.min});
+  state.log.unshift({eventId:newId(), operationId:(crypto.randomUUID ? crypto.randomUUID() : null), sourceMovementId:sourceMovementId || null, event:eventType, t:nextLogTime(), date:eventDate, id:p.id, name:p.name, unit:p.unit, qty:p.qty, min:p.min});
 }
 
 function refreshProductDates(p, removedEntry){
@@ -767,6 +833,8 @@ async function boot(){
     var loaded = bootData[0];
     var normalizedState = loaded && loaded.value ? sanitize(loaded.value) : null;
     state = normalizedState || demoState();
+    ensureStateOperationIds(state);
+    lastCommittedSnapshot = JSON.parse(JSON.stringify(state));
 
     var savedDraft = bootData[1];
     stashMem = savedDraft ? sanitize(savedDraft) : null;
@@ -788,10 +856,24 @@ async function boot(){
     // Também importa o rascunho antigo de demonstração para IndexedDB.
     if (stashMem) saveDraft(STASH_KEY, stashMem).catch(function(){});
 
+    await restoreFallbackSyncQueue(KEY).catch(function(error){ console.warn('A fila local de sincronização será recuperada quando o IndexedDB estiver disponível:', error); });
+    await initSyncEngine({
+      onStatus: renderSyncStatus,
+      canApplyRemoteState: function(){ var overlay = $('overlay'); return indexedDbReady && (!overlay || overlay.hidden); },
+      applyRemoteState: applyCloudSnapshot
+    });
     render();
+    renderSyncStatus(getSyncStatus());
     finishStartup();
     bootCompleted = true;
     window.setTimeout(showFirstUseWelcome, 120);
+    if (isSupabaseConfigured()) {
+      getCloudAccount().then(function(account){
+        if (account.session && account.store) activateCloudStore(account.store).catch(function(error){
+          console.warn('Não foi possível retomar a sincronização automática:', error);
+        });
+      }).catch(function(error){ console.warn('A sessão na nuvem não pôde ser verificada:', error); });
+    }
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){});
   } catch(error) {
     console.error('Falha ao inicializar o armazenamento:', error);
