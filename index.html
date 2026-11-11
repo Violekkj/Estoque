@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Estoque no Bolso</title>
+<!-- Release v9: backup normalization and dedicated Backup screen -->
 <meta name="description" content="Controle de estoque simples: entrada e saída, alerta de mínimo, lista de compras no WhatsApp e valor parado.">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#EDF0F4" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0E151D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EDF0F4" id="themeColorMeta">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -156,6 +156,8 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .hist-delete:active{transform:translateY(1px)}
 
 .top-btns{display:flex; gap:8px; flex-shrink:0}
+.top-btns .ghost{padding:7px 10px; font-size:12px}
+@media (max-width:380px){.top h1{font-size:17px}.top-btns{gap:5px}.top-btns .ghost{padding:7px 8px}}
 .man{border-top:1px solid var(--line); padding-top:12px}
 .man h3{margin:0 0 4px; font-family:var(--f-num); font-size:15px}
 .man p{margin:0; color:var(--fg)}
@@ -186,7 +188,31 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 .sec p{margin:0; color:var(--muted); font-size:13px}
 .danger{background:var(--bad-bg); border:1px solid var(--bad-line); color:var(--bad); border-radius:12px; min-height:46px; font-weight:700}
 
-.toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(148px + env(safe-area-inset-bottom,0px)); z-index:60; background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; max-width:calc(100% - 32px); text-align:center}
+
+.theme-mode-btn{width:100%; min-height:58px; display:flex; align-items:center; justify-content:flex-start; gap:12px; text-align:left}
+.theme-mode-btn .theme-icon{width:38px; height:38px; display:grid; place-items:center; flex:0 0 38px; border-radius:11px; background:var(--bg); color:var(--accent)}
+.theme-mode-btn .theme-icon svg{width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.theme-mode-btn .theme-copy{display:flex; flex-direction:column; gap:2px; flex:1}
+.theme-mode-btn .theme-copy strong{font-size:14px}
+.theme-mode-btn .theme-copy small{font-size:12px; font-weight:400; color:var(--muted)}
+.theme-mode-btn .theme-chevron{color:var(--muted); font-size:18px}
+
+/* confirmação personalizada: usa a mesma paleta do aplicativo */
+.confirm-overlay{position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:22px; background:rgba(8,14,20,.58); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px)}
+.confirm-card{width:100%; max-width:420px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:14px; padding:22px; background:var(--surface); color:var(--fg); border:1px solid var(--line); border-radius:20px; box-shadow:0 18px 48px rgba(0,0,0,.24)}
+.confirm-mark{width:48px; height:48px; display:grid; place-items:center; margin-inline:auto; border-radius:15px; color:var(--bad); background:var(--bad-bg); border:1px solid var(--bad-line)}
+.confirm-mark svg{width:23px; height:23px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.confirm-card h2{font-size:19px; line-height:1.25}
+.confirm-card p{margin:0; color:var(--muted); font-size:14px; line-height:1.55; max-width:34ch}
+.confirm-actions{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px; width:100%}
+.confirm-actions button{min-height:48px; border-radius:12px; padding:0 12px; font-weight:700; font-size:14px}
+.confirm-cancel{background:var(--bg); color:var(--fg); border:1px solid var(--line)}
+.confirm-accept{background:var(--bad); color:var(--on-bad); border:1px solid var(--bad)}
+.confirm-actions button:active{transform:translateY(1px)}
+@media (max-width:360px){.confirm-card{padding:19px}.confirm-actions{grid-template-columns:1fr}.confirm-actions button{min-height:46px}}
+@media (prefers-reduced-motion:no-preference){.confirm-card{animation:confirm-in .16s ease-out}@keyframes confirm-in{from{transform:translateY(8px) scale(.985);opacity:.65}to{transform:none;opacity:1}}}
+
+toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(148px + env(safe-area-inset-bottom,0px)); z-index:60; background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; max-width:calc(100% - 32px); text-align:center}
 @media (prefers-reduced-motion:no-preference){ .sheet{animation:up .18s ease-out} @keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}} }
 
 </style>
@@ -194,7 +220,7 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 <body>
 <div class="col">
   <header class="top">
-    <div class="top-row"><h1 id="title">Estoque no Bolso</h1><div class="top-btns"><button class="ghost" data-act="manual">Manual</button><button class="ghost" data-act="more">Mais</button></div></div>
+    <div class="top-row"><h1 id="title">Estoque no Bolso</h1><div class="top-btns"><button class="ghost" data-act="manual">Manual</button><button class="ghost backup-top-btn" data-act="backup" aria-label="Backup">Backup</button><button class="ghost" data-act="more">Mais</button></div></div>
     <div class="hero">
       <div class="lbl">Valor parado em estoque</div>
       <div class="val" id="totalVal">R$ 0,00</div>
@@ -221,6 +247,7 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 </div></nav>
 <div class="overlay" id="overlay" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" hidden></div>
+<div id="confirmRoot"></div>
 <script>
 
 (function(){
@@ -228,6 +255,39 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 
 // <logic>
 var KEY = 'estoque-no-bolso-v1';
+var THEME_KEY = KEY + '-theme';
+function readSavedTheme(){
+  try { var saved = localStorage.getItem(THEME_KEY); return saved === 'light' || saved === 'dark' ? saved : null; }
+  catch(e){ return null; }
+}
+var themeMode = readSavedTheme();
+function effectiveTheme(){
+  if (themeMode) return themeMode;
+  try { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+  catch(e){ return 'light'; }
+}
+function updateThemeColor(){
+  var meta = document.getElementById('themeColorMeta');
+  if (meta) meta.setAttribute('content', effectiveTheme() === 'dark' ? '#0E151D' : '#EDF0F4');
+}
+function applyTheme(mode, persist){
+  themeMode = mode === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', themeMode);
+  if (persist !== false) {
+    try { localStorage.setItem(THEME_KEY, themeMode); } catch(e) {}
+  }
+  updateThemeColor();
+}
+function themeButtonContent(){
+  var dark = effectiveTheme() === 'dark';
+  var icon = dark
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5z"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>';
+  return '<span class="theme-icon">' + icon + '</span><span class="theme-copy"><strong>Modo ' + (dark ? 'escuro' : 'claro') + '</strong><small>Toque para alternar para o modo ' + (dark ? 'claro' : 'escuro') + '</small></span><span class="theme-chevron" aria-hidden="true">›</span>';
+}
+// Respeita a preferência salva; sem escolha anterior, acompanha o tema do aparelho.
+if (themeMode) applyTheme(themeMode, false);
+else updateThemeColor();
 var BRL = new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'});
 function fmtMoney(n){ return BRL.format(n || 0); }
 function fmtQty(n){ return (Number(n) || 0).toLocaleString('pt-BR', {maximumFractionDigits:3}); }
@@ -294,13 +354,19 @@ function sanitize(obj){
   if (!obj || typeof obj !== 'object' || !Array.isArray(obj.products)) return null;
   var units = ['un','kg','g','L','ml','cx','pct','fardo'];
   var out = {shop: clean(obj.shop, 60), demo: false, products: [], log: []};
+  var productIds = Object.create(null);
+  var usedEventIds = Object.create(null);
+
   obj.products.slice(0, 2000).forEach(function(p){
     if (!p || typeof p !== 'object') return;
     var name = clean(p.name, 80).trim();
     if (!name) return;
     var num = function(v){ var n = Number(v); return isFinite(n) && n >= 0 ? r3(n) : 0; };
+    var id = clean(p.id, 30).trim();
+    if (!id || productIds[id]) id = newId();
+    productIds[id] = true;
     out.products.push({
-      id: clean(p.id, 30) || newId(), name: name,
+      id: id, name: name,
       unit: units.indexOf(p.unit) >= 0 ? p.unit : 'un',
       qty: num(p.qty), min: num(p.min), cost: Math.round(num(p.cost) * 100) / 100,
       supplier: clean(p.supplier, 60).trim(), phone: clean(p.phone, 20).trim(),
@@ -308,20 +374,29 @@ function sanitize(obj){
       lastPurchaseDate: isDateValue(p.lastPurchaseDate) ? p.lastPurchaseDate : null
     });
   });
+
   (Array.isArray(obj.log) ? obj.log : []).slice(0, 10000).forEach(function(l){
     if (!l || typeof l !== 'object') return;
     var t = Number(l.t);
     if (!isFinite(t)) return;
+    var id = clean(l.id, 30).trim();
+    // A history record is only valid while its product exists.
+    // This removes old/orphan movements left behind by previous app versions.
+    if (!id || !productIds[id]) return;
+
     var eventType = ['movement','low','normal'].indexOf(l.event) >= 0 ? l.event : 'movement';
+    var eventId = clean(l.eventId, 50).trim() || newId();
+    if (usedEventIds[eventId]) eventId = newId();
+    usedEventIds[eventId] = true;
     var item = {
-      eventId:clean(l.eventId, 50) || newId(),
-      sourceMovementId:clean(l.sourceMovementId, 50) || null,
-      event:eventType, t:t, date:isDateValue(l.date) ? l.date : dateISO(t),
-      id:clean(l.id, 30), name:clean(l.name, 80), unit:clean(l.unit, 8)
+      eventId: eventId,
+      sourceMovementId: clean(l.sourceMovementId, 50) || null,
+      event: eventType, t: t, date: isDateValue(l.date) ? l.date : dateISO(t),
+      id: id, name: clean(l.name, 80), unit: clean(l.unit, 8)
     };
     if (eventType === 'movement') {
       var d = Number(l.d), a = Number(l.after);
-      if (!isFinite(d) || !isFinite(a)) return;
+      if (!isFinite(d) || !isFinite(a) || d === 0) return;
       item.d = d; item.after = a;
       var minAtTime = Number(l.minAtTime);
       if (isFinite(minAtTime) && minAtTime >= 0) item.minAtTime = minAtTime;
@@ -335,7 +410,15 @@ function sanitize(obj){
     }
     out.log.push(item);
   });
-  // Migra a última data de entrada dos históricos antigos, quando disponível.
+
+  // Linked status events must point to a movement that still exists.
+  var movementIds = Object.create(null);
+  out.log.forEach(function(item){ if (item.event === 'movement') movementIds[item.eventId] = true; });
+  out.log = out.log.filter(function(item){
+    return !item.sourceMovementId || !!movementIds[item.sourceMovementId];
+  });
+
+  // Migrate the latest purchase date from valid history when older data has no product date.
   out.products.forEach(function(p){
     if (p.lastPurchaseDate) return;
     var latest = null;
@@ -366,10 +449,24 @@ function demoState(){
   ]};
 }
 function load(){
-  try { var raw = localStorage.getItem(KEY); if (raw) { var s = sanitize(JSON.parse(raw)); if (s) return s; } } catch(e) {}
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) {
+      var s = sanitize(JSON.parse(raw));
+      if (s) {
+        // Persist the cleaned state once so orphaned records do not return on the next launch.
+        var normalized = JSON.stringify(s);
+        if (normalized !== raw) localStorage.setItem(KEY, normalized);
+        return s;
+      }
+    }
+  } catch(e) {}
   return null;
 }
 function save(){
+  // Keep products and history in agreement before every write and backup.
+  var normalized = sanitize(state);
+  if (normalized) state = normalized;
   try { localStorage.setItem(KEY, JSON.stringify(state)); persisted = true; } catch(e) { persisted = false; }
   renderBanners();
 }
@@ -382,8 +479,8 @@ function getStash(){
   return stashMem;
 }
 function setStash(s){
-  stashMem = s;
-  try { if (s) localStorage.setItem(STASH_KEY, JSON.stringify(s)); else localStorage.removeItem(STASH_KEY); } catch(e) {}
+  stashMem = s ? sanitize(s) : null;
+  try { if (stashMem) localStorage.setItem(STASH_KEY, JSON.stringify(stashMem)); else localStorage.removeItem(STASH_KEY); } catch(e) {}
 }
 
 function $(id){ return document.getElementById(id); }
@@ -409,7 +506,7 @@ function renderStats(){
 }
 function renderBanners(){
   var h = '';
-  if (!persisted) h += '<div class="banner warn"><span>Este navegador não está guardando os dados. Faça o backup em <b>Mais</b> antes de fechar.</span></div>';
+  if (!persisted) h += '<div class="banner warn"><span>Este navegador não está guardando os dados. Faça o backup na aba <b>Backup</b> antes de fechar.</span></div>';
   if (state.demo) {
     var mine = !!getStash();
     h += '<div class="banner"><span>' + (mine ? 'Estes são dados de exemplo. Os seus dados estão guardados.' : 'Estes são dados de exemplo.') + '</span><button data-act="' + (mine ? 'back-mine' : 'clear-demo') + '">' + (mine ? 'Voltar aos meus dados' : 'Começar do zero') + '</button></div>';
@@ -537,14 +634,33 @@ function productSheet(p){
 function moreSheet(){
   openSheet('<div class="sheet-h"><h2>Mais</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
     '<div class="field"><label for="shopName">Nome do seu comércio</label><input type="text" id="shopName" maxlength="60" autocomplete="off" value="' + esc(state.shop) + '" placeholder="Aparece no pedido do WhatsApp"></div>' +
+    '<div class="sec"><h3>Modo</h3><p>Escolha a aparência do Estoque no Bolso. Sua preferência fica salva neste celular.</p><button type="button" class="btn plain theme-mode-btn" id="themeToggle" data-act="toggle-theme">' + themeButtonContent() + '</button></div>' +
     (state.demo ? '' : '<div class="sec"><h3>Dados de exemplo</h3><p>Veja o app preenchido com produtos de exemplo. Os seus dados ficam guardados e voltam quando você quiser.</p><button type="button" class="btn plain" data-act="show-demo">Ver dados de exemplo</button></div>') +
-    '<div class="sec"><h3>Backup</h3><p>Os dados ficam salvos neste celular. Copie o backup de vez em quando e guarde numa conversa sua.</p>' +
-    '<textarea id="bkOut" readonly aria-label="Texto do backup">' + esc(JSON.stringify(state)) + '</textarea><button type="button" class="btn plain" data-act="copy-bk">Copiar backup</button></div>' +
-    '<div class="sec"><h3>Restaurar backup</h3><p>Cole aqui o texto de um backup. Isso troca os dados deste celular.</p>' +
-    '<textarea id="bkIn" aria-label="Colar backup" placeholder="Cole o backup aqui"></textarea><p class="err" id="bkErr" role="alert"></p><button type="button" class="btn plain" data-act="restore">Restaurar</button></div>' +
     '<div class="sec"><h3>Apagar tudo</h3><p>Remove produtos e histórico deste celular.</p><button type="button" class="danger" data-act="wipe">Apagar tudo</button></div>', null);
 }
 
+function backupState(){
+  var cleanState = sanitize(state) || {shop:'', demo:false, products:[], log:[]};
+  state = cleanState;
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) { persisted = false; }
+  return cleanState;
+}
+function backupSheet(){
+  var snapshot = backupState();
+  var backupText = JSON.stringify(snapshot, null, 2);
+  var productCount = snapshot.products.length;
+  var eventCount = snapshot.log.length;
+  var summary = productCount === 0 && eventCount === 0
+    ? 'Nenhum produto ou movimentação registrado. O backup está vazio e limpo.'
+    : productCount + (productCount === 1 ? ' produto' : ' produtos') + ' · ' + eventCount + (eventCount === 1 ? ' registro no histórico' : ' registros no histórico');
+  openSheet('<div class="sheet-h"><h2>Backup</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
+    '<p class="sub">Copie seus dados para guardar uma cópia ou cole um backup para restaurar neste aparelho.</p>' +
+    '<div class="banner"><span>' + esc(summary) + '</span></div>' +
+    '<div class="sec"><h3>Copiar backup</h3><p>O arquivo contém seus produtos e os registros de histórico vinculados a eles. Registros sem produto correspondente são removidos automaticamente.</p>' +
+    '<textarea id="bkOut" readonly spellcheck="false" aria-label="Conteúdo do backup">' + esc(backupText) + '</textarea><button type="button" class="btn plain" data-act="copy-bk">Copiar backup</button></div>' +
+    '<div class="sec"><h3>Restaurar backup</h3><p>Cole abaixo o texto de um backup. Os dados atuais deste aparelho serão substituídos após sua confirmação.</p>' +
+    '<textarea id="bkIn" spellcheck="false" aria-label="Colar backup" placeholder="Cole aqui o conteúdo do backup"></textarea><p class="err" id="bkErr" role="alert"></p><button type="button" class="btn primary" data-act="restore">Validar e restaurar backup</button></div>', null);
+}
 function manualSheet(){
   var items = [
     ['Para que serve', 'Controla o estoque do seu comércio: você cadastra os produtos, registra o que entra e o que sai, e o app avisa o que está acabando.'],
@@ -553,7 +669,7 @@ function manualSheet(){
     ['3. Veja o alerta vermelho', 'O produto que fica abaixo do mínimo ganha destaque vermelho e sobe para o topo da lista. O app registra a data em que ele entrou no vermelho e mostra essa informação no produto, na lista de compras e no Histórico. No resumo, o botão vermelho mostra quantos estão assim.'],
     ['4. Faça a lista de compras', 'Na aba Compras, o que está em falta aparece separado por fornecedor, com uma quantidade sugerida (o dobro do mínimo, menos o que você tem) e a data desde que cada produto está abaixo do mínimo. Ajuste os números e toque em “Enviar no WhatsApp”: o pedido já vai escrito.'],
     ['5. Valor parado em estoque', 'É a soma de quantidade × custo de todos os produtos. Aparece no topo e mostra quanto dinheiro está guardado em mercadoria.'],
-    ['Seus dados', 'Ficam salvos neste celular, sem login. Em “Mais” você copia um backup e restaura quando precisar. Se limpar os dados do navegador ou trocar de celular, só o backup traz tudo de volta.']
+    ['Seus dados', 'Ficam salvos neste celular, sem login. Na aba “Backup” você copia seus dados e restaura uma cópia quando precisar. Se limpar os dados do navegador ou trocar de celular, só o backup traz tudo de volta.']
   ];
   openSheet('<div class="sheet-h"><h2>Manual</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
     items.map(function(it, i){ return '<section class="man"' + (i === 0 ? ' style="border-top:0; padding-top:0"' : '') + '><h3>' + it[0] + '</h3><p>' + it[1] + '</p></section>'; }).join('') +
@@ -624,7 +740,52 @@ function recalculateMovementAlerts(p){
   });
 }
 
-function deleteHistoryEntry(eventId){
+function appConfirm(options){
+  return new Promise(function(resolve){
+    var root = $('confirmRoot');
+    if (!root) { resolve(false); return; }
+    var previousFocus = document.activeElement;
+    var title = options.title || 'Confirmar ação';
+    var message = options.message || 'Deseja continuar?';
+    var confirmText = options.confirmText || 'Confirmar';
+    root.innerHTML = '<div class="confirm-overlay" data-confirm-backdrop>' +
+      '<section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">' +
+        '<div class="confirm-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg></div>' +
+        '<h2 id="confirmTitle">' + esc(title) + '</h2>' +
+        '<p id="confirmMessage">' + esc(message) + '</p>' +
+        '<div class="confirm-actions"><button type="button" class="confirm-cancel" data-confirm-cancel>Cancelar</button><button type="button" class="confirm-accept" data-confirm-accept>' + esc(confirmText) + '</button></div>' +
+      '</section>' +
+    '</div>';
+
+    var overlay = root.firstElementChild;
+    var cancelButton = overlay.querySelector('[data-confirm-cancel]');
+    var acceptButton = overlay.querySelector('[data-confirm-accept]');
+    var finished = false;
+    function finish(result){
+      if (finished) return;
+      finished = true;
+      document.removeEventListener('keydown', onKeydown);
+      root.innerHTML = '';
+      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+      resolve(result);
+    }
+    function onKeydown(event){
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+      else if (event.key === 'Tab') {
+        var first = cancelButton, last = acceptButton;
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    }
+    cancelButton.addEventListener('click', function(){ finish(false); });
+    acceptButton.addEventListener('click', function(){ finish(true); });
+    overlay.addEventListener('click', function(event){ if (event.target === overlay) finish(false); });
+    document.addEventListener('keydown', onKeydown);
+    cancelButton.focus();
+  });
+}
+
+async function deleteHistoryEntry(eventId){
   var entry = state.log.filter(function(item){ return item.eventId === eventId; })[0];
   if (!entry) { toast('Esse registro não foi encontrado.'); return; }
   var p = find(entry.id);
@@ -647,8 +808,14 @@ function deleteHistoryEntry(eventId){
       toast('Não é possível excluir: uma movimentação posterior ficaria com estoque negativo. Revise o histórico primeiro.');
       return;
     }
-    var movementLabel = entry.kind === 'in' || entry.d > 0 ? 'compra/entrada' : 'saída';
-    if (!window.confirm('Excluir esta ' + movementLabel + ' de ' + fmtQty(Math.abs(entry.d)) + ' ' + entry.unit + '? O estoque será ajustado e o registro sairá do histórico.')) return;
+    var isPurchase = entry.kind === 'in' || entry.d > 0;
+    var movementLabel = isPurchase ? 'compra/entrada' : 'saída';
+    var movementConfirmed = await appConfirm({
+      title: isPurchase ? 'Excluir compra / entrada?' : 'Excluir saída?',
+      message: 'Esta ' + movementLabel + ' de ' + fmtQty(Math.abs(entry.d)) + ' ' + entry.unit + ' será removida do histórico e o estoque será ajustado. Deseja continuar?',
+      confirmText: 'Excluir movimentação'
+    });
+    if (!movementConfirmed) return;
 
     var wasLow = isLow(p);
     p.qty = Math.max(0, correctedQty);
@@ -675,11 +842,39 @@ function deleteHistoryEntry(eventId){
     return;
   }
 
-  if (!window.confirm('Excluir este registro do histórico? A quantidade do estoque não será alterada.')) return;
+  var historyConfirmed = await appConfirm({
+    title: 'Excluir registro?',
+    message: 'Este registro será removido do histórico. A quantidade em estoque não será alterada.',
+    confirmText: 'Excluir registro'
+  });
+  if (!historyConfirmed) return;
   state.log = state.log.filter(function(item){ return item.eventId !== eventId && item.sourceMovementId !== eventId; });
   if (p) refreshProductDates(p, entry);
   save(); render(); toast('Registro removido do histórico.');
 }
+async function restoreBackup(){
+  var raw = $('bkIn').value.trim();
+  var restored = null;
+  try { restored = sanitize(JSON.parse(raw)); } catch(err) {}
+  if (!restored) {
+    $('bkErr').textContent = 'Esse texto não é um backup válido. Confira o conteúdo e tente novamente.';
+    return;
+  }
+  var confirmed = await appConfirm({
+    title: 'Restaurar backup?',
+    message: 'Os produtos e o histórico deste aparelho serão substituídos pelo conteúdo do backup. Registros sem produto correspondente serão descartados.',
+    confirmText: 'Restaurar dados'
+  });
+  if (!confirmed) return;
+  state = restored;
+  setStash(null);
+  override = {};
+  save();
+  closeSheet();
+  render();
+  toast('Backup restaurado e registros conferidos.');
+}
+
 function copyText(text, okMsg){
   function fallback(){
     try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); document.body.removeChild(ta); toast(ok ? okMsg : 'Não deu para copiar. Selecione o texto e copie.'); }
@@ -710,6 +905,8 @@ document.addEventListener('click', function(e){
   else if (act === 'mov') movSheet(find(el.dataset.id), el.dataset.kind);
   else if (act === 'delete-history') deleteHistoryEntry(el.dataset.eventId);
   else if (act === 'more') { wipeArmed = false; moreSheet(); }
+  else if (act === 'backup') backupSheet();
+  else if (act === 'toggle-theme') { applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark', true); var themeToggle = $('themeToggle'); if (themeToggle) themeToggle.innerHTML = themeButtonContent(); }
   else if (act === 'manual') manualSheet();
   else if (act === 'show-demo') showDemo();
   else if (act === 'back-mine') {
@@ -721,13 +918,7 @@ document.addEventListener('click', function(e){
   else if (act === 'clear-demo') { state = {shop:state.shop, demo:false, products:[], log:[]}; override = {}; save(); render(); toast('Pronto. Cadastre seus produtos.'); }
   else if (act === 'copy-buy') { var g = groupBuy(state.products, override)[Number(el.dataset.g)]; if (g) copyText(buildMessage(state.shop, g), 'Texto copiado'); }
   else if (act === 'copy-bk') { var t = $('bkOut'); t.select(); copyText(t.value, 'Backup copiado'); }
-  else if (act === 'restore') {
-    var raw = $('bkIn').value.trim(), s = null;
-    try { s = sanitize(JSON.parse(raw)); } catch(err) {}
-    if (!s) { $('bkErr').textContent = 'Esse texto não é um backup válido.'; return; }
-    if (el.dataset.armed !== '1') { el.dataset.armed = '1'; el.textContent = 'Confirmar: trocar os dados deste celular'; $('bkErr').textContent = ''; return; }
-    state = s; setStash(null); override = {}; save(); closeSheet(); render(); toast('Backup restaurado');
-  }
+  else if (act === 'restore') restoreBackup();
   else if (act === 'wipe') {
     if (!wipeArmed) { wipeArmed = true; el.textContent = 'Toque de novo para confirmar'; return; }
     state = {shop:state.shop, demo:false, products:[], log:[]}; setStash(null); override = {}; save(); closeSheet(); render(); toast('Tudo apagado');
