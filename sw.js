@@ -1,40 +1,84 @@
-
-// Service worker do Estoque no Bolso: deixa o app abrir sem internet.
-// Ao publicar uma nova versão do app, troque o número em VERSION.
-const VERSION = 'v3';
+// Service worker do Estoque no Bolso.
+// Navegações sempre tentam buscar a versão mais recente; o cache é usado offline.
+const VERSION = 'v4';
 const CACHE = 'estoque-no-bolso-' + VERSION;
-const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
+const CORE = [
+  './',
+  'index.html',
+  'manifest.webmanifest',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
+  'apple-touch-icon.png'
+];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await cache.addAll(CORE);
+    await self.skipWaiting();
+  })());
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('estoque-no-bolso-') && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((key) => key.startsWith('estoque-no-bolso-') && key !== CACHE)
+        .map((key) => caches.delete(key))
+    );
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET') return;
-  const url = new URL(req.url);
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
 
-  // links do WhatsApp e qualquer outro site: não mexer
-  if (url.origin !== location.origin && !/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) return;
+  const url = new URL(request.url);
+  const isGoogleFont = /^fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
+  if (url.origin !== self.location.origin && !isGoogleFont) return;
 
-  e.respondWith(
-    caches.match(req, { ignoreSearch: req.mode === 'navigate' }).then((cached) => {
-      const network = fetch(req).then((res) => {
-        if (res && (res.ok || res.type === 'opaque')) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+  // Para abrir o app, prioriza a rede para evitar mostrar HTML antigo.
+  // Se estiver sem internet, usa a última versão guardada.
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const response = await fetch(request, { cache: 'no-store' });
+        if (response && response.ok) {
+          await cache.put(request, response.clone());
         }
-        return res;
-      }).catch(() => cached || (req.mode === 'navigate' ? caches.match('index.html') : undefined));
-      return cached || network;
-    })
-  );
+        return response;
+      } catch (error) {
+        const rootUrl = new URL('./', self.registration.scope).href;
+        const indexUrl = new URL('index.html', self.registration.scope).href;
+        const fallback =
+          await cache.match(request) ||
+          await cache.match(rootUrl) ||
+          await cache.match(indexUrl);
+        if (fallback) return fallback;
+        throw error;
+      }
+    })());
+    return;
+  }
+
+  // Para recursos estáticos, usa o cache primeiro e busca na rede se necessário.
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    try {
+      const response = await fetch(request);
+      if (response && (response.ok || response.type === 'opaque')) {
+        const cache = await caches.open(CACHE);
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch (error) {
+      return Response.error();
+    }
+  })());
 });

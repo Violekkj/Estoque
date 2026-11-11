@@ -20,7 +20,8 @@ img{max-width:100%}
 [hidden]{display:none!important}
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
-<style>
+<style>html{scroll-padding-top:env(safe-area-inset-top,0px)}
+
 /* Layout: coluna única de celular. Resumo no topo, abas fixas, cartões de produto com botões grandes de Entrada/Saída. */
 :root{
   --bg:#EDF0F4; --surface:#FFFFFF; --fg:#131E2A; --muted:#566676; --line:#D7DEE6;
@@ -48,10 +49,11 @@ img{max-width:100%}
   --shadow:none; color-scheme:dark;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{
   margin:0; background:var(--bg); color:var(--fg);
   font-family:var(--f-body); font-size:15px; line-height:1.4;
-  padding-block:0 96px;
+  padding-block:0 150px;
   padding-left:max(16px, env(safe-area-inset-left,0px));
   padding-right:max(16px, env(safe-area-inset-right,0px));
 }
@@ -79,12 +81,15 @@ h1,h2{font-family:var(--f-num); margin:0; letter-spacing:-.01em}
 .banner.warn{border-color:var(--bad-line); background:var(--bad-bg); border-style:solid}
 .banner button{border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:8px 12px; font-weight:600; min-height:40px}
 
-/* abas */
-.tabs{position:sticky; top:env(safe-area-inset-top,0px); z-index:20; background:var(--bg); padding-block:6px 10px}
-.seg{display:grid; grid-template-columns:repeat(3,1fr); gap:4px; background:var(--line); border-radius:12px; padding:4px}
-.seg button{border:0; background:transparent; border-radius:9px; min-height:42px; font-weight:600; color:var(--muted); display:flex; align-items:center; justify-content:center; gap:6px}
-.seg button[aria-selected="true"]{background:var(--surface); color:var(--fg); box-shadow:var(--shadow)}
-.badge{background:var(--bad); color:var(--on-bad); border-radius:99px; font-size:12px; padding:1px 7px; font-family:var(--f-num); font-variant-numeric:tabular-nums}
+/* navegação inferior */
+.bottomnav{position:fixed; left:0; right:0; bottom:0; z-index:25; background:var(--surface); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom,0px); padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px))}
+.bn{max-width:560px; margin:0 auto; display:grid; grid-template-columns:repeat(3,1fr)}
+.bn button{position:relative; border:0; background:transparent; color:var(--muted); min-height:64px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:11px; font-weight:600}
+.bn button[aria-selected="true"]{color:var(--accent)}
+.bn button[aria-selected="true"]::before{content:""; position:absolute; top:0; left:25%; right:25%; height:3px; border-radius:0 0 3px 3px; background:var(--accent)}
+.bn svg{width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
+.ic{position:relative; display:flex}
+.badge{position:absolute; top:-6px; right:-13px; background:var(--bad); color:var(--on-bad); border-radius:99px; font-size:11px; line-height:1; padding:3px 6px; font-family:var(--f-num); font-weight:700; font-variant-numeric:tabular-nums}
 
 /* busca */
 .toolbar{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
@@ -140,8 +145,13 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .hrow .dl.in{color:var(--good)} .hrow .dl.out{color:var(--bad)}
 .hrow .af{color:var(--muted); font-size:12px; text-align:right}
 
+.top-btns{display:flex; gap:8px; flex-shrink:0}
+.man{border-top:1px solid var(--line); padding-top:12px}
+.man h3{margin:0 0 4px; font-family:var(--f-num); font-size:15px}
+.man p{margin:0; color:var(--fg)}
+
 /* botão flutuante */
-.fab{position:fixed; right:calc(16px + env(safe-area-inset-right,0px)); bottom:calc(16px + env(safe-area-inset-bottom,0px)); z-index:15; background:var(--accent); color:var(--on-accent); border:0; border-radius:99px; min-height:54px; padding:0 22px; font-weight:700; font-size:16px; box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.fab{position:fixed; right:calc(16px + env(safe-area-inset-right,0px)); bottom:calc(80px + env(safe-area-inset-bottom,0px)); z-index:15; background:var(--accent); color:var(--on-accent); border:0; border-radius:99px; min-height:54px; padding:0 22px; font-weight:700; font-size:16px; box-shadow:0 6px 18px rgba(0,0,0,.25)}
 
 /* folha */
 .overlay{position:fixed; inset:0; z-index:40; background:rgba(8,14,20,.55); display:flex; align-items:flex-end; justify-content:center}
@@ -166,14 +176,15 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 .sec p{margin:0; color:var(--muted); font-size:13px}
 .danger{background:var(--bad-bg); border:1px solid var(--bad-line); color:var(--bad); border-radius:12px; min-height:46px; font-weight:700}
 
-.toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(84px + env(safe-area-inset-bottom,0px)); z-index:60; background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; max-width:calc(100% - 32px); text-align:center}
+.toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(148px + env(safe-area-inset-bottom,0px)); z-index:60; background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; max-width:calc(100% - 32px); text-align:center}
 @media (prefers-reduced-motion:no-preference){ .sheet{animation:up .18s ease-out} @keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}} }
+
 </style>
 </head>
 <body>
 <div class="col">
   <header class="top">
-    <div class="top-row"><h1 id="title">Estoque no Bolso</h1><button class="ghost" data-act="more">Mais</button></div>
+    <div class="top-row"><h1 id="title">Estoque no Bolso</h1><div class="top-btns"><button class="ghost" data-act="manual">Manual</button><button class="ghost" data-act="more">Mais</button></div></div>
     <div class="hero">
       <div class="lbl">Valor parado em estoque</div>
       <div class="val" id="totalVal">R$ 0,00</div>
@@ -184,12 +195,6 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 
   <div id="banners"></div>
 
-  <div class="tabs"><div class="seg" role="tablist">
-    <button role="tab" data-act="tab" data-tab="prod" aria-selected="true">Produtos</button>
-    <button role="tab" data-act="tab" data-tab="buy" aria-selected="false">Compras <span class="badge" id="buyBadge" hidden>0</span></button>
-    <button role="tab" data-act="tab" data-tab="hist" aria-selected="false">Histórico</button>
-  </div></div>
-
   <main>
     <div class="toolbar" id="toolbar">
       <input type="search" id="search" placeholder="Buscar produto" autocomplete="off" aria-label="Buscar produto">
@@ -199,10 +204,15 @@ label{font-weight:600; font-size:13px; display:block; margin-bottom:6px}
 </div>
 
 <button class="fab" id="fab" data-act="new">+ Produto</button>
+<nav class="bottomnav" aria-label="Seções do app"><div class="bn" role="tablist">
+  <button role="tab" data-act="tab" data-tab="prod" aria-selected="true"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>Produtos</button>
+  <button role="tab" data-act="tab" data-tab="buy" aria-selected="false"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.5 12h11l2-8H6"/></svg><span class="badge" id="buyBadge" hidden>0</span></span>Compras</button>
+  <button role="tab" data-act="tab" data-tab="hist" aria-selected="false"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Histórico</button>
+</div></nav>
 <div class="overlay" id="overlay" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" hidden></div>
-
 <script>
+
 (function(){
 'use strict';
 
@@ -307,6 +317,17 @@ function save(){
 }
 state = load() || demoState();
 
+/* Guarda os dados reais enquanto a pessoa vê o exemplo */
+var STASH_KEY = KEY + '-meus-dados', stashMem = null;
+function getStash(){
+  try { var raw = localStorage.getItem(STASH_KEY); if (raw) { var s = sanitize(JSON.parse(raw)); if (s) return s; } } catch(e) {}
+  return stashMem;
+}
+function setStash(s){
+  stashMem = s;
+  try { if (s) localStorage.setItem(STASH_KEY, JSON.stringify(s)); else localStorage.removeItem(STASH_KEY); } catch(e) {}
+}
+
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function find(id){ return state.products.filter(function(p){ return p.id === id; })[0]; }
@@ -331,7 +352,10 @@ function renderStats(){
 function renderBanners(){
   var h = '';
   if (!persisted) h += '<div class="banner warn"><span>Este navegador não está guardando os dados. Faça o backup em <b>Mais</b> antes de fechar.</span></div>';
-  if (state.demo) h += '<div class="banner"><span>Estes são dados de exemplo.</span><button data-act="clear-demo">Começar do zero</button></div>';
+  if (state.demo) {
+    var mine = !!getStash();
+    h += '<div class="banner"><span>' + (mine ? 'Estes são dados de exemplo. Os seus dados estão guardados.' : 'Estes são dados de exemplo.') + '</span><button data-act="' + (mine ? 'back-mine' : 'clear-demo') + '">' + (mine ? 'Voltar aos meus dados' : 'Começar do zero') + '</button></div>';
+  }
   $('banners').innerHTML = h;
 }
 function renderTabs(){
@@ -344,7 +368,7 @@ function renderProducts(){
   var list = state.products.filter(function(p){ return !q || p.name.toLowerCase().indexOf(q) >= 0; });
   if (onlyLow) list = list.filter(isLow);
   list.sort(function(a, b){ return (isLow(b) - isLow(a)) || a.name.localeCompare(b.name, 'pt-BR'); });
-  if (!state.products.length) return '<div class="empty"><b>Nenhum produto ainda</b>Toque em “+ Produto” para cadastrar o primeiro.</div>';
+  if (!state.products.length) return '<div class="empty"><b>Nenhum produto ainda</b>Toque em “+ Produto” para cadastrar o primeiro.' + (state.demo ? '' : '<br><button class="btn plain" style="flex:none; margin-top:14px" data-act="show-demo">Ver dados de exemplo</button>') + '</div>';
   if (!list.length) return '<div class="empty"><b>Nada encontrado</b>' + (onlyLow ? 'Nenhum produto abaixo do mínimo.' : 'Tente outro nome.') + '</div>';
   return '<div class="list">' + list.map(function(p){
     var low = isLow(p);
@@ -433,11 +457,33 @@ function productSheet(p){
 function moreSheet(){
   openSheet('<div class="sheet-h"><h2>Mais</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
     '<div class="field"><label for="shopName">Nome do seu comércio</label><input type="text" id="shopName" maxlength="60" autocomplete="off" value="' + esc(state.shop) + '" placeholder="Aparece no pedido do WhatsApp"></div>' +
+    (state.demo ? '' : '<div class="sec"><h3>Dados de exemplo</h3><p>Veja o app preenchido com produtos de exemplo. Os seus dados ficam guardados e voltam quando você quiser.</p><button type="button" class="btn plain" data-act="show-demo">Ver dados de exemplo</button></div>') +
     '<div class="sec"><h3>Backup</h3><p>Os dados ficam salvos neste celular. Copie o backup de vez em quando e guarde numa conversa sua.</p>' +
     '<textarea id="bkOut" readonly aria-label="Texto do backup">' + esc(JSON.stringify(state)) + '</textarea><button type="button" class="btn plain" data-act="copy-bk">Copiar backup</button></div>' +
     '<div class="sec"><h3>Restaurar backup</h3><p>Cole aqui o texto de um backup. Isso troca os dados deste celular.</p>' +
     '<textarea id="bkIn" aria-label="Colar backup" placeholder="Cole o backup aqui"></textarea><p class="err" id="bkErr" role="alert"></p><button type="button" class="btn plain" data-act="restore">Restaurar</button></div>' +
     '<div class="sec"><h3>Apagar tudo</h3><p>Remove produtos e histórico deste celular.</p><button type="button" class="danger" data-act="wipe">Apagar tudo</button></div>', null);
+}
+
+function manualSheet(){
+  var items = [
+    ['Para que serve', 'Controla o estoque do seu comércio: você cadastra os produtos, registra o que entra e o que sai, e o app avisa o que está acabando.'],
+    ['1. Cadastre os produtos', 'Toque em “+ Produto”. Informe nome, unidade, custo, quantidade atual e o estoque mínimo, que é a quantidade abaixo da qual você quer ser avisado. Para pedir pelo WhatsApp, informe também o fornecedor e o número dele.'],
+    ['2. Registre entradas e saídas', 'Em cada produto, use “+ Entrada” quando chegar mercadoria e “− Saída” quando sair (venda, perda ou uso). Use “Editar” para corrigir nome, custo, mínimo ou fornecedor. Tudo fica na aba Histórico.'],
+    ['3. Veja o alerta vermelho', 'O produto que fica abaixo do mínimo ganha destaque vermelho e sobe para o topo da lista. No resumo, o botão vermelho mostra quantos estão assim. Toque nele para ver só esses.'],
+    ['4. Faça a lista de compras', 'Na aba Compras, o que está em falta aparece separado por fornecedor, com uma quantidade sugerida (o dobro do mínimo, menos o que você tem). Ajuste os números e toque em “Enviar no WhatsApp”: o pedido já vai escrito. Sem número cadastrado, você escolhe o contato no WhatsApp. Também dá para copiar o texto.'],
+    ['5. Valor parado em estoque', 'É a soma de quantidade × custo de todos os produtos. Aparece no topo e mostra quanto dinheiro está guardado em mercadoria.'],
+    ['Seus dados', 'Ficam salvos neste celular, sem login. Em “Mais” você copia um backup e restaura quando precisar. Se limpar os dados do navegador ou trocar de celular, só o backup traz tudo de volta.']
+  ];
+  openSheet('<div class="sheet-h"><h2>Manual</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
+    items.map(function(it, i){ return '<section class="man"' + (i === 0 ? ' style="border-top:0; padding-top:0"' : '') + '><h3>' + it[0] + '</h3><p>' + it[1] + '</p></section>'; }).join('') +
+    (state.demo ? '' : '<button type="button" class="btn plain" style="flex:none" data-act="show-demo">Ver dados de exemplo</button>'), null);
+}
+function showDemo(){
+  if (state.demo) { closeSheet(); return; }
+  if (state.products.length || state.log.length) setStash(JSON.parse(JSON.stringify(state)));
+  state = demoState(); override = {}; tab = 'prod'; onlyLow = false; search = ''; $('search').value = '';
+  save(); closeSheet(); render(); toast('Mostrando dados de exemplo');
 }
 
 /* ---------- ações ---------- */
@@ -478,6 +524,12 @@ document.addEventListener('click', function(e){
   else if (act === 'edit') productSheet(find(el.dataset.id));
   else if (act === 'mov') movSheet(find(el.dataset.id), el.dataset.kind);
   else if (act === 'more') { wipeArmed = false; moreSheet(); }
+  else if (act === 'manual') manualSheet();
+  else if (act === 'show-demo') showDemo();
+  else if (act === 'back-mine') {
+    var mine = getStash(); if (!mine) return;
+    state = mine; setStash(null); override = {}; save(); render(); toast('Seus dados voltaram');
+  }
   else if (act === 'close') closeSheet();
   else if (act === 'step') { var inp = $('movQty'); var n = parseNum(inp.value); inp.value = String(Math.max(0, (isNaN(n) ? 0 : n) + Number(el.dataset.d))).replace('.', ','); updateMov(); }
   else if (act === 'clear-demo') { state = {shop:state.shop, demo:false, products:[], log:[]}; override = {}; save(); render(); toast('Pronto. Cadastre seus produtos.'); }
@@ -488,11 +540,11 @@ document.addEventListener('click', function(e){
     try { s = sanitize(JSON.parse(raw)); } catch(err) {}
     if (!s) { $('bkErr').textContent = 'Esse texto não é um backup válido.'; return; }
     if (el.dataset.armed !== '1') { el.dataset.armed = '1'; el.textContent = 'Confirmar: trocar os dados deste celular'; $('bkErr').textContent = ''; return; }
-    state = s; override = {}; save(); closeSheet(); render(); toast('Backup restaurado');
+    state = s; setStash(null); override = {}; save(); closeSheet(); render(); toast('Backup restaurado');
   }
   else if (act === 'wipe') {
     if (!wipeArmed) { wipeArmed = true; el.textContent = 'Toque de novo para confirmar'; return; }
-    state = {shop:state.shop, demo:false, products:[], log:[]}; override = {}; save(); closeSheet(); render(); toast('Tudo apagado');
+    state = {shop:state.shop, demo:false, products:[], log:[]}; setStash(null); override = {}; save(); closeSheet(); render(); toast('Tudo apagado');
   }
   else if (act === 'del') {
     if (el.dataset.armed !== '1') { el.dataset.armed = '1'; el.textContent = 'Toque de novo para excluir'; return; }
@@ -537,13 +589,15 @@ document.addEventListener('submit', function(e){
 
 render();
 })();
-</script>
 
+</script>
 <script>
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
 }
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+
 </script>
 </body>
 </html>
