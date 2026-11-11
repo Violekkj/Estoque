@@ -93,7 +93,7 @@ h1,h2{font-family:var(--f-num); margin:0; letter-spacing:-.01em}
 
 /* busca */
 .toolbar{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
-input[type=text],input[type=search],select,textarea{width:100%; background:var(--surface); border:1.5px solid var(--line); border-radius:12px; padding:12px 14px; min-height:48px}
+input[type=text],input[type=search],input[type=date],select,textarea{width:100%; background:var(--surface); border:1.5px solid var(--line); border-radius:12px; padding:12px 14px; min-height:48px}
 textarea{min-height:96px; resize:vertical; font-size:13px}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 
@@ -106,6 +106,13 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .pill{background:var(--bad); color:var(--on-bad); border-radius:99px; font-size:12px; font-weight:700; padding:3px 10px; white-space:nowrap}
 .c-meta{display:flex; flex-wrap:wrap; gap:2px 12px; color:var(--muted); font-size:13px; align-items:center; font-variant-numeric:tabular-nums}
 .card.low .c-meta{color:var(--fg)}
+.date-meta{display:flex; flex-direction:column; gap:3px; color:var(--muted); font-size:12px}
+.card.low .date-meta{color:var(--fg)}
+.buy-date{color:var(--muted); font-size:11px; margin-top:2px}
+.eventnote{grid-column:1/-1; color:var(--bad); font-size:12px; font-weight:600; margin-top:3px}
+.hrow.status-low{border-color:var(--bad-line); background:var(--bad-bg)}
+.hrow.status-normal{border-color:var(--line)}
+.hrow .tag{font-size:11px; color:var(--muted); text-align:right}
 .link{background:none; border:0; padding:4px 0; color:var(--accent); font-weight:600; font-size:13px; min-height:32px}
 .c-bot{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap}
 .qty{display:flex; align-items:baseline; gap:6px}
@@ -229,6 +236,22 @@ function parseNum(v){
   return isFinite(n) ? n : NaN;
 }
 function isLow(p){ return p.qty < p.min; }
+function isDateValue(value){
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  var parts = value.split('-').map(Number);
+  var d = new Date(parts[0], parts[1] - 1, parts[2]);
+  return d.getFullYear() === parts[0] && d.getMonth() === parts[1] - 1 && d.getDate() === parts[2];
+}
+function dateISO(timestamp){
+  var d = new Date(timestamp);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function todayISO(){ return dateISO(Date.now()); }
+function fmtISODate(value){
+  if (!isDateValue(value)) return 'Data não registrada';
+  var p = value.split('-').map(Number);
+  return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('pt-BR');
+}
 function totalValue(list){ return list.reduce(function(s, p){ return s + p.qty * p.cost; }, 0); }
 function suggest(p){ return Math.max(0, Math.ceil(r3(p.min * 2 - p.qty))); }
 function supplierKey(p){ return (p.supplier || '').trim() || 'Sem fornecedor'; }
@@ -240,7 +263,7 @@ function groupBuy(products, override){
     var g = map[k];
     if (!g.phone && p.phone) g.phone = p.phone;
     var q = (override && override[p.id] != null) ? override[p.id] : suggest(p);
-    g.items.push({id:p.id, name:p.name, unit:p.unit, q:q, cost:p.cost});
+    g.items.push({id:p.id, name:p.name, unit:p.unit, q:q, cost:p.cost, lowSinceDate:p.lowSinceDate || null});
   });
   var groups = order.map(function(k){ return map[k]; });
   groups.sort(function(a, b){
@@ -277,14 +300,42 @@ function sanitize(obj){
       id: clean(p.id, 30) || newId(), name: name,
       unit: units.indexOf(p.unit) >= 0 ? p.unit : 'un',
       qty: num(p.qty), min: num(p.min), cost: Math.round(num(p.cost) * 100) / 100,
-      supplier: clean(p.supplier, 60).trim(), phone: clean(p.phone, 20).trim()
+      supplier: clean(p.supplier, 60).trim(), phone: clean(p.phone, 20).trim(),
+      lowSinceDate: isDateValue(p.lowSinceDate) ? p.lowSinceDate : null,
+      lastPurchaseDate: isDateValue(p.lastPurchaseDate) ? p.lastPurchaseDate : null
     });
   });
   (Array.isArray(obj.log) ? obj.log : []).slice(0, 200).forEach(function(l){
     if (!l || typeof l !== 'object') return;
-    var d = Number(l.d), a = Number(l.after), t = Number(l.t);
-    if (!isFinite(d) || !isFinite(a) || !isFinite(t)) return;
-    out.log.push({t:t, id:clean(l.id, 30), name:clean(l.name, 80), unit:clean(l.unit, 8), d:d, after:a});
+    var t = Number(l.t);
+    if (!isFinite(t)) return;
+    var eventType = ['movement','low','normal'].indexOf(l.event) >= 0 ? l.event : 'movement';
+    var item = {
+      event:eventType, t:t, date:isDateValue(l.date) ? l.date : dateISO(t),
+      id:clean(l.id, 30), name:clean(l.name, 80), unit:clean(l.unit, 8)
+    };
+    if (eventType === 'movement') {
+      var d = Number(l.d), a = Number(l.after);
+      if (!isFinite(d) || !isFinite(a)) return;
+      item.d = d; item.after = a;
+      item.kind = l.kind === 'in' || l.kind === 'out' ? l.kind : (d > 0 ? 'in' : 'out');
+      item.enteredLow = !!l.enteredLow;
+      item.leftLow = !!l.leftLow;
+    } else {
+      var qty = Number(l.qty), min = Number(l.min);
+      item.qty = isFinite(qty) && qty >= 0 ? qty : 0;
+      item.min = isFinite(min) && min >= 0 ? min : 0;
+    }
+    out.log.push(item);
+  });
+  // Migra a última data de entrada dos históricos antigos, quando disponível.
+  out.products.forEach(function(p){
+    if (p.lastPurchaseDate) return;
+    var latest = null;
+    out.log.forEach(function(item){
+      if (item.event === 'movement' && item.kind === 'in' && item.id === p.id && (!latest || item.t > latest.t)) latest = item;
+    });
+    if (latest) p.lastPurchaseDate = latest.date;
   });
   out.demo = !!obj.demo;
   return out;
@@ -333,7 +384,7 @@ function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'
 function find(id){ return state.products.filter(function(p){ return p.id === id; })[0]; }
 var toastT;
 function toast(msg){ var t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ t.hidden = true; }, 2400); }
-function fmtDate(t){ return new Date(t).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}); }
+function fmtDate(t){ return new Date(t).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}); }
 
 /* ---------- renderização ---------- */
 function renderStats(){
@@ -372,9 +423,13 @@ function renderProducts(){
   if (!list.length) return '<div class="empty"><b>Nada encontrado</b>' + (onlyLow ? 'Nenhum produto abaixo do mínimo.' : 'Tente outro nome.') + '</div>';
   return '<div class="list">' + list.map(function(p){
     var low = isLow(p);
+    var dateMeta = '';
+    if (low) dateMeta += '<div>No vermelho desde: ' + (p.lowSinceDate ? fmtISODate(p.lowSinceDate) : 'data não registrada (já estava abaixo do mínimo)') + '</div>';
+    if (p.lastPurchaseDate) dateMeta += '<div>Última compra/entrada: ' + fmtISODate(p.lastPurchaseDate) + '</div>';
     return '<article class="card' + (low ? ' low' : '') + '">' +
       '<div class="c-top"><div class="c-name">' + esc(p.name) + '</div>' + (low ? '<span class="pill">' + (p.qty <= 0 ? 'Zerado' : 'Abaixo do mínimo') + '</span>' : '') + '</div>' +
       '<div class="c-meta"><span>Mínimo ' + fmtQty(p.min) + ' ' + esc(p.unit) + '</span><span>Custo ' + fmtMoney(p.cost) + '</span><span>Parado ' + fmtMoney(p.qty * p.cost) + '</span><button class="link" data-act="edit" data-id="' + p.id + '">Editar</button></div>' +
+      (dateMeta ? '<div class="date-meta">' + dateMeta + '</div>' : '') +
       '<div class="c-bot"><div class="qty"><span class="n">' + fmtQty(p.qty) + '</span><span class="u">' + esc(p.unit) + '</span></div>' +
       '<div class="acts"><button class="btn out" data-act="mov" data-kind="out" data-id="' + p.id + '">− Saída</button><button class="btn in" data-act="mov" data-kind="in" data-id="' + p.id + '">+ Entrada</button></div></div>' +
       '</article>';
@@ -387,7 +442,7 @@ function renderBuy(){
   groups.forEach(function(g, gi){
     h += '<section class="card" data-g="' + gi + '"><div class="g-head"><h2>' + esc(g.key) + '</h2><span>' + (g.phone ? 'WhatsApp ' + esc(g.phone) : 'Sem número: você escolhe o contato no WhatsApp') + '</span></div><div>';
     g.items.forEach(function(i){
-      h += '<div class="row"><span class="nm">' + esc(i.name) + '</span><input class="qin" type="text" inputmode="decimal" autocomplete="off" aria-label="Quantidade de ' + esc(i.name) + '" data-id="' + i.id + '" data-g="' + gi + '" value="' + esc(fmtQty(i.q).replace(/\./g, '')) + '"><span class="un">' + esc(i.unit) + '</span></div>';
+      h += '<div class="row"><div><div class="nm">' + esc(i.name) + '</div><div class="buy-date">Abaixo do mínimo desde: ' + (i.lowSinceDate ? fmtISODate(i.lowSinceDate) : 'data não registrada') + '</div></div><input class="qin" type="text" inputmode="decimal" autocomplete="off" aria-label="Quantidade de ' + esc(i.name) + '" data-id="' + i.id + '" data-g="' + gi + '" value="' + esc(fmtQty(i.q).replace(/\./g, '')) + '"><span class="un">' + esc(i.unit) + '</span></div>';
     });
     h += '</div><div class="tot"><span>Total estimado pelo seu custo</span><b data-sub="' + gi + '">' + fmtMoney(groupCost(g)) + '</b></div>' +
       '<div class="g-acts"><a class="btn in" data-wa="' + gi + '" target="_blank" rel="noopener" href="' + esc(waLink(g.phone, buildMessage(state.shop, g))) + '">Enviar no WhatsApp</a>' +
@@ -397,10 +452,19 @@ function renderBuy(){
   return h;
 }
 function renderHist(){
-  if (!state.log.length) return '<div class="empty"><b>Sem movimentos</b>As entradas e saídas aparecem aqui.</div>';
+  if (!state.log.length) return '<div class="empty"><b>Sem movimentos</b>As compras/entradas, saídas e alertas de estoque aparecerão aqui.</div>';
   return '<div class="list">' + state.log.map(function(l){
-    var inn = l.d > 0;
-    return '<div class="hrow"><span class="nm">' + esc(l.name) + '</span><span class="dl ' + (inn ? 'in' : 'out') + '">' + (inn ? '+' : '−') + fmtQty(Math.abs(l.d)) + ' ' + esc(l.unit) + '</span><span class="dt">' + fmtDate(l.t) + '</span><span class="af">ficou com ' + fmtQty(l.after) + '</span></div>';
+    var dateLabel = fmtISODate(l.date);
+    if (l.event === 'low') {
+      return '<div class="hrow status-low"><span class="nm">Entrou no vermelho · ' + esc(l.name) + '</span><span class="tag">Alerta de estoque</span><span class="dt">' + dateLabel + '</span><span class="af">Estoque: ' + fmtQty(l.qty) + ' ' + esc(l.unit) + ' · mínimo: ' + fmtQty(l.min) + '</span></div>';
+    }
+    if (l.event === 'normal') {
+      return '<div class="hrow status-normal"><span class="nm">Estoque normalizado · ' + esc(l.name) + '</span><span class="tag">Alerta resolvido</span><span class="dt">' + dateLabel + '</span><span class="af">Estoque: ' + fmtQty(l.qty) + ' ' + esc(l.unit) + '</span></div>';
+    }
+    var inn = l.kind === 'in' || l.d > 0;
+    var label = inn ? 'Compra / entrada · ' : 'Saída de estoque · ';
+    var extra = l.enteredLow ? '<span class="eventnote">Este movimento fez o produto entrar no vermelho.</span>' : (l.leftLow ? '<span class="eventnote" style="color:var(--good)">Este movimento retirou o produto do vermelho.</span>' : '');
+    return '<div class="hrow"><span class="nm">' + label + esc(l.name) + '</span><span class="dl ' + (inn ? 'in' : 'out') + '">' + (inn ? '+' : '−') + fmtQty(Math.abs(l.d)) + ' ' + esc(l.unit) + '</span><span class="dt">' + dateLabel + '</span><span class="af">ficou com ' + fmtQty(l.after) + ' ' + esc(l.unit) + '</span>' + extra + '</div>';
   }).join('') + '</div>';
 }
 function render(){
@@ -417,19 +481,23 @@ function closeSheet(){ $('overlay').hidden = true; $('sheet').innerHTML = ''; }
 function movSheet(p, kind){
   var inn = kind === 'in';
   openSheet('<form id="movForm" data-id="' + p.id + '" data-kind="' + kind + '" novalidate>' +
-    '<div class="sheet-h"><h2>' + (inn ? 'Entrada' : 'Saída') + '</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
+    '<div class="sheet-h"><h2>' + (inn ? 'Compra / entrada' : 'Saída') + '</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
     '<p class="sub">' + esc(p.name) + ' · em estoque: <b>' + fmtQty(p.qty) + ' ' + esc(p.unit) + '</b></p>' +
-    '<div class="field" style="margin-top:12px"><label for="movQty">Quantidade (' + esc(p.unit) + ')</label>' +
-    '<div class="stepper"><button type="button" data-act="step" data-d="-1" aria-label="Diminuir">−</button><input type="text" id="movQty" inputmode="decimal" autocomplete="off" value="1"><button type="button" data-act="step" data-d="1" aria-label="Aumentar">+</button></div></div>' +
+    '<div class="field" style="margin-top:12px"><label for="movDate">' + (inn ? 'Data da compra / entrada' : 'Data da saída') + '</label><input type="date" id="movDate" value="' + todayISO() + '" required></div>' +
+    '<div class="field"><label for="movQty">Quantidade (' + esc(p.unit) + ')</label>' +
+    '<div class="stepper"><button type="button" data-act="step" data-d="-1" aria-label="Diminuir">−</button><input type="text" id="movQty" inputmode="decimal" autocomplete="off" value="1"></div></div>' +
     '<p class="err" id="movErr" role="alert"></p><p class="after" id="movAfter"></p>' +
-    '<button type="submit" class="btn ' + (inn ? 'in' : 'primary') + '" style="width:100%">Registrar ' + (inn ? 'entrada' : 'saída') + '</button></form>', 'movQty');
+    '<button type="submit" class="btn ' + (inn ? 'in' : 'primary') + '" style="width:100%">Registrar ' + (inn ? 'compra / entrada' : 'saída') + '</button></form>', 'movQty');
   updateMov();
 }
 function updateMov(){
   var f = $('movForm'); if (!f) return;
   var p = find(f.dataset.id), kind = f.dataset.kind, n = parseNum($('movQty').value);
+  var movementDate = $('movDate').value;
   var err = '', after = '';
-  if (isNaN(n) || n <= 0) err = 'Digite uma quantidade maior que zero.';
+  if (!isDateValue(movementDate)) err = 'Selecione uma data válida.';
+  else if (movementDate > todayISO()) err = 'A data não pode ser no futuro.';
+  else if (isNaN(n) || n <= 0) err = 'Digite uma quantidade maior que zero.';
   else if (kind === 'out' && n > p.qty) err = 'A saída é maior que o estoque atual (' + fmtQty(p.qty) + ' ' + p.unit + ').';
   else { var a = r3(p.qty + (kind === 'in' ? n : -n)); after = 'Vai ficar com <b>' + fmtQty(a) + ' ' + esc(p.unit) + '</b>' + (a < p.min ? ' — abaixo do mínimo (' + fmtQty(p.min) + ')' : ''); }
   $('movErr').textContent = err; $('movAfter').innerHTML = after;
@@ -469,9 +537,9 @@ function manualSheet(){
   var items = [
     ['Para que serve', 'Controla o estoque do seu comércio: você cadastra os produtos, registra o que entra e o que sai, e o app avisa o que está acabando.'],
     ['1. Cadastre os produtos', 'Toque em “+ Produto”. Informe nome, unidade, custo, quantidade atual e o estoque mínimo, que é a quantidade abaixo da qual você quer ser avisado. Para pedir pelo WhatsApp, informe também o fornecedor e o número dele.'],
-    ['2. Registre entradas e saídas', 'Em cada produto, use “+ Entrada” quando chegar mercadoria e “− Saída” quando sair (venda, perda ou uso). Use “Editar” para corrigir nome, custo, mínimo ou fornecedor. Tudo fica na aba Histórico.'],
-    ['3. Veja o alerta vermelho', 'O produto que fica abaixo do mínimo ganha destaque vermelho e sobe para o topo da lista. No resumo, o botão vermelho mostra quantos estão assim. Toque nele para ver só esses.'],
-    ['4. Faça a lista de compras', 'Na aba Compras, o que está em falta aparece separado por fornecedor, com uma quantidade sugerida (o dobro do mínimo, menos o que você tem). Ajuste os números e toque em “Enviar no WhatsApp”: o pedido já vai escrito. Sem número cadastrado, você escolhe o contato no WhatsApp. Também dá para copiar o texto.'],
+    ['2. Registre entradas e saídas', 'Em cada produto, use “+ Entrada” quando chegar mercadoria e informe a data da compra/entrada. Use “− Saída” quando sair (venda, perda ou uso) e informe a data da saída. Cada movimentação fica registrada na aba Histórico.'],
+    ['3. Veja o alerta vermelho', 'O produto que fica abaixo do mínimo ganha destaque vermelho e sobe para o topo da lista. O app registra a data em que ele entrou no vermelho e mostra essa informação no produto, na lista de compras e no Histórico. No resumo, o botão vermelho mostra quantos estão assim.'],
+    ['4. Faça a lista de compras', 'Na aba Compras, o que está em falta aparece separado por fornecedor, com uma quantidade sugerida (o dobro do mínimo, menos o que você tem) e a data desde que cada produto está abaixo do mínimo. Ajuste os números e toque em “Enviar no WhatsApp”: o pedido já vai escrito.'],
     ['5. Valor parado em estoque', 'É a soma de quantidade × custo de todos os produtos. Aparece no topo e mostra quanto dinheiro está guardado em mercadoria.'],
     ['Seus dados', 'Ficam salvos neste celular, sem login. Em “Mais” você copia um backup e restaura quando precisar. Se limpar os dados do navegador ou trocar de celular, só o backup traz tudo de volta.']
   ];
@@ -487,13 +555,25 @@ function showDemo(){
 }
 
 /* ---------- ações ---------- */
-function applyMove(id, kind, amount){
-  var p = find(id); var d = kind === 'in' ? amount : -amount;
+function applyMove(id, kind, amount, movementDate){
+  var p = find(id), wasLow = isLow(p), d = kind === 'in' ? amount : -amount;
+  var timestamp = Date.now();
   p.qty = r3(p.qty + d);
-  state.log.unshift({t:Date.now(), id:p.id, name:p.name, unit:p.unit, d:d, after:p.qty});
+  var isLowNow = isLow(p);
+  if (kind === 'in') p.lastPurchaseDate = movementDate;
+  if (!wasLow && isLowNow) p.lowSinceDate = movementDate;
+  else if (wasLow && !isLowNow) p.lowSinceDate = null;
+  state.log.unshift({
+    event:'movement', t:timestamp, date:movementDate, id:p.id, name:p.name, unit:p.unit,
+    kind:kind, d:d, after:p.qty, enteredLow:!wasLow && isLowNow, leftLow:wasLow && !isLowNow
+  });
   state.log.length = Math.min(state.log.length, 200);
   delete override[id];
   save();
+}
+function addStatusLog(eventType, p, eventDate){
+  state.log.unshift({event:eventType, t:Date.now(), date:eventDate, id:p.id, name:p.name, unit:p.unit, qty:p.qty, min:p.min});
+  state.log.length = Math.min(state.log.length, 200);
 }
 function copyText(text, okMsg){
   function fallback(){
@@ -568,9 +648,9 @@ document.addEventListener('submit', function(e){
   var f = e.target;
   if (f.id === 'movForm') {
     if (!updateMov()) return;
-    var n = parseNum($('movQty').value), kind = f.dataset.kind, p = find(f.dataset.id);
-    applyMove(p.id, kind, n); closeSheet(); render();
-    toast((kind === 'in' ? 'Entrada' : 'Saída') + ' registrada: ' + p.name);
+    var n = parseNum($('movQty').value), kind = f.dataset.kind, p = find(f.dataset.id), movementDate = $('movDate').value;
+    applyMove(p.id, kind, n, movementDate); closeSheet(); render();
+    toast((kind === 'in' ? 'Compra / entrada' : 'Saída') + ' registrada: ' + p.name);
   } else if (f.id === 'prodForm') {
     var name = $('pName').value.trim(), min = parseNum($('pMin').value || '0'), cost = parseNum($('pCost').value || '0');
     var qty = $('pQty') ? parseNum($('pQty').value || '0') : null;
@@ -581,8 +661,19 @@ document.addEventListener('submit', function(e){
     else if (qty !== null && (isNaN(qty) || qty < 0)) err = 'A quantidade precisa ser um número.';
     if (err) { $('pErr').textContent = err; return; }
     var data = {name:name, unit:$('pUnit').value, min:r3(min), cost:Math.round(cost * 100) / 100, supplier:$('pSup').value.trim(), phone:$('pPhone').value.trim()};
-    if (f.dataset.id) { var p2 = find(f.dataset.id); Object.keys(data).forEach(function(k){ p2[k] = data[k]; }); delete override[p2.id]; }
-    else { data.id = newId(); data.qty = r3(qty); state.products.push(data); }
+    if (f.dataset.id) {
+      var p2 = find(f.dataset.id), wasLow = isLow(p2);
+      Object.keys(data).forEach(function(k){ p2[k] = data[k]; });
+      var isLowNow = isLow(p2), statusDate = todayISO();
+      if (!wasLow && isLowNow) { p2.lowSinceDate = statusDate; addStatusLog('low', p2, statusDate); }
+      else if (wasLow && !isLowNow) { p2.lowSinceDate = null; addStatusLog('normal', p2, statusDate); }
+      else if (!isLowNow) p2.lowSinceDate = null;
+      delete override[p2.id];
+    } else {
+      data.id = newId(); data.qty = r3(qty); data.lastPurchaseDate = null;
+      if (isLow(data)) { data.lowSinceDate = todayISO(); state.products.push(data); addStatusLog('low', data, data.lowSinceDate); }
+      else { data.lowSinceDate = null; state.products.push(data); }
+    }
     save(); closeSheet(); render(); toast('Produto salvo');
   }
 });
