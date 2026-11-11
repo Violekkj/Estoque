@@ -1,7 +1,8 @@
 // Repositório local: IndexedDB é a fonte principal; localStorage permanece como fallback/migração.
-import { getRecord, putRecord, isSupported, deleteRecord } from './indexed-db.js';
+import { getRecord, putRecord, isSupported, deleteRecord, commitSnapshotAndQueue, enqueueSyncOperation } from './indexed-db.js';
 const SNAPSHOT_KEY='main';
 const UPDATED_SUFFIX='-updated-at';
+const SYNC_QUEUE_SUFFIX='-sync-queue';
 let writeQueue=Promise.resolve();
 const IDB_READ_TIMEOUT_MS = 3500;
 const IDB_WRITE_TIMEOUT_MS = 4500;
@@ -51,20 +52,61 @@ export async function loadAppState(legacyKey){
   return null;
 }
 
-export function saveAppState(legacyKey,state){
+function mergeQueueItems(existing, incoming){
+  const map=new Map();
+  (Array.isArray(existing)?existing:[]).forEach(item=>{if(item&&item.id)map.set(String(item.id),item);});
+  (Array.isArray(incoming)?incoming:[]).forEach(item=>{if(item&&item.id)map.set(String(item.id),item);});
+  return Array.from(map.values());
+}
+
+// Recupera operações que ficaram no fallback local caso uma gravação IndexedDB
+// tenha falhado. IDs estáveis tornam a reimportação segura para repetição.
+export async function restoreFallbackSyncQueue(legacyKey){
+  const queueKey=legacyKey+SYNC_QUEUE_SUFFIX;
+  const pending=readLegacy(queueKey);
+  if(!Array.isArray(pending)||pending.length===0)return{restored:0,ok:true};
+  let restored=0;
+  try{
+    for(const operation of pending){
+      if(!operation||!operation.id)continue;
+      await enqueueSyncOperation(operation);
+      restored+=1;
+    }
+    localStorage.removeItem(queueKey);
+    return{restored,ok:true};
+  }catch(error){
+    console.warn('Não foi possível recuperar toda a fila local de sincronização:',error);
+    return{restored,ok:false,error};
+  }
+}
+
+export function saveAppState(legacyKey,state,queueOperations=[]){
   const snapshot=clone(state);
   const updatedAt=Date.now();
   let localStorageOk=false;
+  const queueKey=legacyKey+SYNC_QUEUE_SUFFIX;
+  const fallbackQueue=mergeQueueItems(readLegacy(queueKey),queueOperations);
   try{
     localStorage.setItem(legacyKey,JSON.stringify(snapshot));
     localStorage.setItem(legacyKey+UPDATED_SUFFIX,String(updatedAt));
+    // Fallback durável: se o IndexedDB falhar, as operações não se perdem junto
+    // com o snapshot e podem ser reimportadas na próxima abertura.
+    if(fallbackQueue.length)localStorage.setItem(queueKey,JSON.stringify(fallbackQueue));
     localStorageOk=true;
   }catch(error){console.warn('Falha na cópia local de compatibilidade:',error);}
-  const write=writeQueue.then(()=>withTimeout(putRecord('snapshots',{key:SNAPSHOT_KEY,payload:snapshot,updatedAt,schemaVersion:1}),IDB_WRITE_TIMEOUT_MS,'A gravação no IndexedDB excedeu o tempo limite.'));
+  const record={key:SNAPSHOT_KEY,payload:snapshot,updatedAt,schemaVersion:2};
+  const write=writeQueue.then(()=>withTimeout(
+    commitSnapshotAndQueue(record,fallbackQueue),
+    IDB_WRITE_TIMEOUT_MS,
+    'A gravação do estoque e da fila excedeu o tempo limite.'
+  ));
   writeQueue=write.catch(()=>{});
-  return write.then(()=>({ok:true,indexedDBOk:true,localStorageOk})).catch(error=>{
-    console.warn('Falha ao gravar em IndexedDB:',error);
-    return{ok:localStorageOk,indexedDBOk:false,localStorageOk};
+  return write.then(()=>{
+    try{localStorage.removeItem(queueKey);}catch(error){}
+    return{ok:true,indexedDBOk:true,localStorageOk,queuePersisted:true};
+  }).catch(error=>{
+    console.warn('Falha ao gravar no IndexedDB:',error);
+    return{ok:localStorageOk,indexedDBOk:false,localStorageOk,queuePersisted:false};
   });
 }
 

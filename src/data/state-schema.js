@@ -41,7 +41,8 @@ export function sanitize(obj){
     usedEventIds[eventId] = true;
     var item = {
       eventId: eventId,
-      sourceMovementId: clean(l.sourceMovementId, 50) || null,
+      operationId: clean(l.operationId, 60) || null,
+      sourceMovementId: clean(l.sourceMovementId, 80) || null,
       event: eventType, t: t, date: isDateValue(l.date) ? l.date : dateISO(t),
       id: id, name: clean(l.name, 80), unit: clean(l.unit, 8)
     };
@@ -52,6 +53,8 @@ export function sanitize(obj){
       var minAtTime = Number(l.minAtTime);
       if (isFinite(minAtTime) && minAtTime >= 0) item.minAtTime = minAtTime;
       item.kind = l.kind === 'in' || l.kind === 'out' ? l.kind : (d > 0 ? 'in' : 'out');
+      item.movementType = clean(l.movementType, 40) || null;
+      item.note = clean(l.note, 500) || null;
       item.enteredLow = !!l.enteredLow;
       item.leftLow = !!l.leftLow;
     } else {
