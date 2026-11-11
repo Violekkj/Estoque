@@ -234,3 +234,15 @@ toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(148px + 
   .app-startup{padding:16px}
   .app-startup-card{width:100%;max-width:420px;padding:24px 20px}
 }
+
+/* Conta e autenticação Supabase — mantendo o visual leve do Estoque no Bolso. */
+.cloud-auth-form{display:flex;flex-direction:column;gap:13px}
+.cloud-auth-form .btn{width:100%}
+.cloud-account-card{display:flex;flex-direction:column;gap:12px}
+.cloud-account-status{display:flex;align-items:center;gap:8px;color:var(--good);font-size:13px}
+.cloud-dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.cloud-dot.online{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 16%,transparent)}
+.cloud-account-name{font-family:var(--f-num);font-size:21px;font-weight:700;color:var(--fg)}
+.cloud-account-email{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.cloud-footnote{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+#cloudAccountContent code{font-size:12px;overflow-wrap:anywhere}

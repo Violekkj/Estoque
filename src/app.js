@@ -7,6 +7,10 @@ import { sanitize, demoState } from "./data/state-schema.js";
 import {
   loadAppState, saveAppState, loadDraft, saveDraft, isIndexedDBAvailable, isLocalStorageAvailable
 } from "./data/storage.js";
+import { isSupabaseConfigured } from "./cloud/supabase-client.js";
+import {
+  getCloudAccount, signInWithPassword, signUpWithPassword, signOutFromCloud
+} from "./cloud/auth.js";
 
 'use strict';
 
@@ -230,8 +234,108 @@ function moreSheet(){
   openSheet('<div class="sheet-h"><h2>Mais</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
     '<div class="field"><label for="shopName">Nome do seu comércio</label><input type="text" id="shopName" maxlength="60" autocomplete="off" value="' + esc(state.shop) + '" placeholder="Aparece no pedido do WhatsApp"></div>' +
     '<div class="sec"><h3>Modo</h3><p>Escolha a aparência do Estoque no Bolso. Sua preferência fica salva neste celular.</p><button type="button" class="btn plain theme-mode-btn" id="themeToggle" data-act="toggle-theme">' + themeButtonContent() + '</button></div>' +
+    '<div class="sec"><h3>Conta e nuvem</h3><p>Vincule este comércio a uma conta para preparar o acesso em outros dispositivos.</p><button type="button" class="btn plain" data-act="account">Conta e acesso</button></div>' +
     (state.demo ? '' : '<div class="sec"><h3>Dados de exemplo</h3><p>Veja o app preenchido com produtos de exemplo. Os seus dados ficam guardados e voltam quando você quiser.</p><button type="button" class="btn plain" data-act="show-demo">Ver dados de exemplo</button></div>') +
     '<div class="sec"><h3>Apagar tudo</h3><p>Remove produtos e histórico deste celular.</p><button type="button" class="danger" data-act="wipe">Apagar tudo</button></div>', null);
+}
+
+function accountSheet(){
+  openSheet('<div class="sheet-h"><h2>Conta e nuvem</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
+    '<div id="cloudAccountContent"><div class="banner"><span>Verificando configuração da conta...</span></div></div>', null);
+  renderCloudAccount();
+}
+
+async function renderCloudAccount(messageText){
+  var root = $('cloudAccountContent');
+  if (!root) return;
+  if (!isSupabaseConfigured()) {
+    root.innerHTML = '<div class="banner warn"><span>A conexão com a nuvem ainda não foi configurada neste projeto.</span></div>' +
+      '<section class="sec"><h3>Etapa necessária</h3><p>Crie seu projeto Supabase, aplique a migração SQL incluída nesta versão e preencha a URL e a chave publicável em <code>src/config/supabase-config.js</code>.</p>' +
+      '<p><b>Importante:</b> use somente a chave publicável (publishable/anon). Nunca coloque uma chave <code>service_role</code> ou secret no aplicativo.</p></section>' +
+      '<div class="banner"><span>Enquanto isso, o aplicativo continua funcionando localmente. Os produtos ainda não são enviados à nuvem nesta fase.</span></div>';
+    return;
+  }
+  root.innerHTML = '<div class="banner"><span>Conectando ao serviço de autenticação...</span></div>';
+  try {
+    var account = await getCloudAccount();
+    if (!document.getElementById('cloudAccountContent')) return;
+    if (account.session && account.store) {
+      root.innerHTML = '<div class="cloud-account-card"><div class="cloud-account-status"><span class="cloud-dot online"></span><b>Conta autenticada</b></div>' +
+        '<div class="cloud-account-name">' + esc(account.store.name) + '</div>' +
+        '<div class="cloud-account-email">' + esc(account.session.user.email || '') + '</div>' +
+        '<div class="banner warn"><span>A conta e o estabelecimento estão vinculados. A sincronização dos produtos será ativada na Fase 4; seus dados continuam armazenados neste aparelho.</span></div>' +
+        '<button type="button" class="btn plain" data-cloud-action="signout">Sair da conta</button></div>';
+    } else {
+      root.innerHTML = '<p class="sub">Entre na sua conta ou crie o acesso do proprietário do comércio.</p>' +
+        '<form id="cloudAuthForm" class="cloud-auth-form" novalidate>' +
+        '<div class="field"><label for="cloudStoreName">Nome do comércio (para cadastro)</label><input id="cloudStoreName" type="text" maxlength="80" autocomplete="organization" value="' + esc(state.shop) + '" placeholder="Ex.: Mercado do Bairro"></div>' +
+        '<div class="field"><label for="cloudEmail">E-mail</label><input id="cloudEmail" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></div>' +
+        '<div class="field"><label for="cloudPassword">Senha</label><input id="cloudPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="Mínimo de 6 caracteres"></div>' +
+        '<p class="err" id="cloudAuthError" role="alert"></p>' +
+        '<button type="button" class="btn primary" data-cloud-action="signin">Entrar</button>' +
+        '<button type="button" class="btn plain" data-cloud-action="signup">Criar conta e estabelecimento</button>' +
+        '</form>' +
+        '<p class="cloud-footnote">Nesta fase, a autenticação e o cadastro do estabelecimento já podem ser testados. A sincronização de produtos, compras e histórico será ligada na próxima fase.</p>';
+    }
+    if (messageText) {
+      var note = document.createElement('div');
+      note.className = 'banner';
+      note.textContent = messageText;
+      root.prepend(note);
+    }
+  } catch (error) {
+    root.innerHTML = '<div class="banner warn"><span>Não foi possível conectar: ' + esc(error.message || 'erro desconhecido') + '</span></div>' +
+      '<button type="button" class="btn plain" data-cloud-action="retry">Tentar novamente</button>';
+  }
+}
+
+async function handleCloudAction(action, button){
+  var root = $('cloudAccountContent');
+  if (!root) return;
+  if (action === 'retry') { renderCloudAccount(); return; }
+  if (action === 'signout') {
+    button.disabled = true;
+    try { await signOutFromCloud(); await renderCloudAccount('Você saiu da conta. Os dados locais deste aparelho foram preservados.'); }
+    catch (error) { await renderCloudAccount('Não foi possível sair: ' + (error.message || 'erro desconhecido')); }
+    return;
+  }
+  var email = $('cloudEmail') ? $('cloudEmail').value.trim() : '';
+  var password = $('cloudPassword') ? $('cloudPassword').value : '';
+  var storeName = $('cloudStoreName') ? $('cloudStoreName').value.trim() : '';
+  var errorBox = $('cloudAuthError');
+  if (!email || !password) {
+    if (errorBox) errorBox.textContent = 'Informe seu e-mail e sua senha.';
+    return;
+  }
+  if (action === 'signup' && !storeName) {
+    if (errorBox) errorBox.textContent = 'Informe o nome do comércio.';
+    return;
+  }
+  if (password.length < 6) {
+    if (errorBox) errorBox.textContent = 'A senha precisa ter pelo menos 6 caracteres.';
+    return;
+  }
+  button.disabled = true;
+  var oldText = button.textContent;
+  button.textContent = 'Aguarde...';
+  if (errorBox) errorBox.textContent = '';
+  try {
+    if (action === 'signin') {
+      var signedIn = await signInWithPassword(email, password);
+      await renderCloudAccount('Acesso confirmado para ' + signedIn.store.name + '. Seus dados locais ainda não foram enviados à nuvem.');
+    } else {
+      var created = await signUpWithPassword({ email: email, password: password, storeName: storeName });
+      if (created.requiresEmailConfirmation) {
+        await renderCloudAccount('Cadastro iniciado! Confira seu e-mail para confirmar a conta e depois volte aqui para entrar.');
+      } else {
+        await renderCloudAccount('Conta e estabelecimento criados. A sincronização dos dados será ativada na Fase 4.');
+      }
+    }
+  } catch (error) {
+    if (errorBox) errorBox.textContent = error.message || 'Não foi possível concluir a operação.';
+    button.disabled = false;
+    button.textContent = oldText;
+  }
 }
 
 function backupState(){
@@ -564,6 +668,7 @@ document.addEventListener('click', function(e){
   else if (act === 'mov') movSheet(find(el.dataset.id), el.dataset.kind);
   else if (act === 'delete-history') deleteHistoryEntry(el.dataset.eventId);
   else if (act === 'more') { wipeArmed = false; moreSheet(); }
+  else if (act === 'account') accountSheet();
   else if (act === 'backup') backupSheet();
   else if (act === 'toggle-theme') { applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark', true); var themeToggle = $('themeToggle'); if (themeToggle) themeToggle.innerHTML = themeButtonContent(); }
   else if (act === 'manual') manualSheet();
@@ -590,6 +695,13 @@ document.addEventListener('click', function(e){
     delete override[deletedProductId]; save(); closeSheet(); render(); toast('Produto e seu histórico foram excluídos');
   }
 });
+document.addEventListener('click', function(e){
+  var button = e.target.closest('[data-cloud-action]');
+  if (!button) return;
+  e.preventDefault();
+  handleCloudAction(button.dataset.cloudAction, button);
+});
+
 $('overlay').addEventListener('click', function(e){ if (e.target === $('overlay')) closeSheet(); });
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('overlay').hidden) closeSheet(); });
 

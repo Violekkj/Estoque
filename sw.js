@@ -1,6 +1,6 @@
-// Service worker do Estoque no Bolso — v12.
-// Todos os caminhos são relativos ao diretório do próprio worker, compatíveis com /Planilha/.
-const VERSION = 'v12';
+// Service worker do Estoque no Bolso — v13.
+// Todos os caminhos são relativos ao diretório do próprio worker, compatíveis com /Estoque/.
+const VERSION = 'v13';
 const CACHE = 'estoque-no-bolso-' + VERSION;
 const CORE = [
   './',
@@ -15,7 +15,10 @@ const CORE = [
   './src/core/utils.js',
   './src/data/state-schema.js',
   './src/data/indexed-db.js',
-  './src/data/storage.js'
+  './src/data/storage.js',
+  './src/config/supabase-config.js',
+  './src/cloud/supabase-client.js',
+  './src/cloud/auth.js'
 ];
 
 self.addEventListener('install', (event) => {

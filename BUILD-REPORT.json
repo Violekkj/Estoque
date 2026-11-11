@@ -1,19 +1,30 @@
 {
-  "release": "v12",
-  "basis": "Estoque-no-Bolso-v11-modular.zip",
+  "release": "v13",
+  "basis": "Estoque-no-Bolso-v12-corrigido.zip",
   "module_entry": "./src/app.js",
   "stylesheet": "./assets/styles/app.css",
-  "all_local_paths_relative": true,
-  "file_protocol": "Shows a clear fallback because browser ES modules are blocked on file://; use INICIAR-LOCAL.bat",
-  "startup_timeout_fallback": true,
-  "indexeddb_read_write_timeouts": true,
-  "service_worker_version": "v12",
-  "missing_maskable_icon_added": true,
-  "cloud_sync_enabled": false,
+  "service_worker_version": "v13",
+  "github_pages_base": "/Estoque/",
+  "supabase": {
+    "schema_migration": "./supabase/migrations/202611110001_initial_store_schema.sql",
+    "auth_ui": "Mais > Conta e acesso",
+    "auth_methods": [
+      "email_password_sign_up",
+      "email_password_sign_in",
+      "sign_out"
+    ],
+    "rls_enabled_for_all_public_tables": true,
+    "client_delete_grants": false,
+    "data_sync_enabled": false,
+    "phase4_required": true
+  },
   "verification": {
-    "javascript_syntax": "passed (node --check on all modules and sw.js)",
-    "relative_path_audit": "passed (HTML links, ES module imports, manifest icons, Service Worker cache list)",
-    "subdirectory_http_checks": "passed (all required resources returned HTTP 200 under /v11-audit/ path simulation)",
-    "browser_visual_test": "not performed in this environment; verify in Chrome desktop and Android"
-  }
+    "javascript_syntax": "passed (node --input-type=module --check on all local modules)",
+    "relative_imports": "passed (all relative module imports resolve)",
+    "service_worker_core": "passed (all cached local resources exist)",
+    "hardcoded_old_pages_url": "none found",
+    "live_supabase_migration": "not run; requires user's Supabase project",
+    "browser_auth_test": "not run; requires project URL and publishable key"
+  },
+  "notes": "Phase 3 schema/auth scaffold. Product/purchase/history synchronization remains disabled until Phase 4. Only Supabase publishable key belongs in frontend; never service_role/secret."
 }
