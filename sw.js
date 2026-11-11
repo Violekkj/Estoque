@@ -1,6 +1,6 @@
 // Service worker do Estoque no Bolso: deixa o app abrir sem internet.
 // Ao publicar uma nova versão do app, troque o número em VERSION.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'estoque-no-bolso-' + VERSION;
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
