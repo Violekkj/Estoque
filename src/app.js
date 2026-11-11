@@ -639,15 +639,27 @@ document.addEventListener('submit', function(e){
 
 async function boot(){
   var startup = $('appStartup');
+  var bootCompleted = false;
+  function finishStartup(){
+    if (startup) startup.hidden = true;
+    window.dispatchEvent(new Event('estoque:ready'));
+  }
   try {
-    var loaded = await loadAppState(KEY);
+    // Leia snapshot, rascunho e disponibilidade do IndexedDB em paralelo.
+    // Assim, uma demora do banco não soma três esperas sequenciais na tela inicial.
+    var bootData = await Promise.all([
+      loadAppState(KEY),
+      loadDraft(STASH_KEY),
+      isIndexedDBAvailable()
+    ]);
+    var loaded = bootData[0];
     var normalizedState = loaded && loaded.value ? sanitize(loaded.value) : null;
     state = normalizedState || demoState();
 
-    var savedDraft = await loadDraft(STASH_KEY);
+    var savedDraft = bootData[1];
     stashMem = savedDraft ? sanitize(savedDraft) : null;
 
-    indexedDbReady = await isIndexedDBAvailable();
+    indexedDbReady = !!bootData[2];
     persisted = !!normalizedState || indexedDbReady || isLocalStorageAvailable();
     storageFallback = !indexedDbReady && persisted;
 
@@ -665,19 +677,28 @@ async function boot(){
     if (stashMem) saveDraft(STASH_KEY, stashMem).catch(function(){});
 
     render();
-    if (startup) startup.hidden = true;
+    finishStartup();
+    bootCompleted = true;
     window.setTimeout(showFirstUseWelcome, 120);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){});
   } catch(error) {
     console.error('Falha ao inicializar o armazenamento:', error);
-    state = demoState();
+    state = state || demoState();
     indexedDbReady = false;
     persisted = false;
     storageFallback = false;
     render();
-    if (startup) startup.hidden = true;
-    toast('Não foi possível carregar os dados salvos. Confira o backup antes de continuar.');
+    finishStartup();
+    toast('Não foi possível carregar o armazenamento principal. O modo local de compatibilidade foi ativado; confira seu backup antes de continuar.');
+  } finally {
+    // Última proteção: nenhuma falha inesperada deve manter a tela de carregamento presa.
+    if (!bootCompleted && startup && !startup.hidden) finishStartup();
   }
 }
 
-boot();
+boot().catch(function(error){
+  console.error('Erro inesperado na inicialização:', error);
+  var startup = $('appStartup');
+  if (startup) startup.hidden = true;
+  window.dispatchEvent(new Event('estoque:ready'));
+});

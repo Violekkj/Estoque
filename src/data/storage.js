@@ -3,6 +3,18 @@ import { getRecord, putRecord, isSupported, deleteRecord } from './indexed-db.js
 const SNAPSHOT_KEY='main';
 const UPDATED_SUFFIX='-updated-at';
 let writeQueue=Promise.resolve();
+const IDB_READ_TIMEOUT_MS = 3500;
+const IDB_WRITE_TIMEOUT_MS = 4500;
+
+function withTimeout(promise, milliseconds, label){
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error(label || 'O armazenamento local demorou demais para responder.')),milliseconds);
+    Promise.resolve(promise).then(
+      value=>{clearTimeout(timer);resolve(value);},
+      error=>{clearTimeout(timer);reject(error);}
+    );
+  });
+}
 
 function readLegacy(key){
   try{const raw=localStorage.getItem(key);return raw==null?null:JSON.parse(raw);}catch(error){return null;}
@@ -23,13 +35,13 @@ export function isLocalStorageAvailable(){
 
 export async function isIndexedDBAvailable(){
   if(!isSupported())return false;
-  try{await getRecord('meta','__healthcheck__');return true;}
+  try{await withTimeout(getRecord('meta','__healthcheck__'),IDB_READ_TIMEOUT_MS,'O IndexedDB não respondeu a tempo.');return true;}
   catch(error){console.warn('IndexedDB indisponível; usando compatibilidade local.',error);return false;}
 }
 
 export async function loadAppState(legacyKey){
   let record=null;
-  try{record=await getRecord('snapshots',SNAPSHOT_KEY);}catch(error){console.warn('Falha ao ler snapshot IndexedDB:',error);}
+  try{record=await withTimeout(getRecord('snapshots',SNAPSHOT_KEY),IDB_READ_TIMEOUT_MS,'A leitura do IndexedDB excedeu o tempo limite.');}catch(error){console.warn('Falha ao ler snapshot IndexedDB:',error);}
   const legacy=readLegacy(legacyKey);
   const legacyTime=legacyTimestamp(legacyKey);
   const idbTime=record?Number(record.updatedAt)||0:-1;
@@ -48,7 +60,7 @@ export function saveAppState(legacyKey,state){
     localStorage.setItem(legacyKey+UPDATED_SUFFIX,String(updatedAt));
     localStorageOk=true;
   }catch(error){console.warn('Falha na cópia local de compatibilidade:',error);}
-  const write=writeQueue.then(()=>putRecord('snapshots',{key:SNAPSHOT_KEY,payload:snapshot,updatedAt,schemaVersion:1}));
+  const write=writeQueue.then(()=>withTimeout(putRecord('snapshots',{key:SNAPSHOT_KEY,payload:snapshot,updatedAt,schemaVersion:1}),IDB_WRITE_TIMEOUT_MS,'A gravação no IndexedDB excedeu o tempo limite.'));
   writeQueue=write.catch(()=>{});
   return write.then(()=>({ok:true,indexedDBOk:true,localStorageOk})).catch(error=>{
     console.warn('Falha ao gravar em IndexedDB:',error);
@@ -58,7 +70,7 @@ export function saveAppState(legacyKey,state){
 
 export async function loadDraft(key){
   let record=null;
-  try{record=await getRecord('drafts',key);}catch(error){}
+  try{record=await withTimeout(getRecord('drafts',key),IDB_READ_TIMEOUT_MS,'A leitura do rascunho excedeu o tempo limite.');}catch(error){}
   const legacy=readLegacy(key);
   const legacyTime=legacyTimestamp(key);
   const idbTime=record?Number(record.updatedAt)||0:-1;
@@ -74,6 +86,6 @@ export function saveDraft(key,value){
     if(snapshot==null){localStorage.removeItem(key);localStorage.removeItem(key+UPDATED_SUFFIX);}
     else{localStorage.setItem(key,JSON.stringify(snapshot));localStorage.setItem(key+UPDATED_SUFFIX,String(updatedAt));}
   }catch(error){console.warn('Falha ao salvar rascunho no localStorage:',error);}
-  const task=snapshot==null?deleteRecord('drafts',key):putRecord('drafts',{key,payload:snapshot,updatedAt});
+  const task=snapshot==null?withTimeout(deleteRecord('drafts',key),IDB_WRITE_TIMEOUT_MS,'A exclusão do rascunho excedeu o tempo limite.'):withTimeout(putRecord('drafts',{key,payload:snapshot,updatedAt}),IDB_WRITE_TIMEOUT_MS,'A gravação do rascunho excedeu o tempo limite.');
   return task.catch(error=>{console.warn('Falha ao salvar rascunho no IndexedDB:',error);});
 }

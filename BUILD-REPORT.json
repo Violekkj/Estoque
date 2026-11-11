@@ -1,15 +1,19 @@
 {
-  "release": "v11",
-  "basis": "Estoque-no-Bolso-v10.zip",
-  "legacy_local_storage_key_preserved": true,
-  "indexeddb_stores": [
-    "snapshots",
-    "drafts",
-    "outbox",
-    "meta"
-  ],
-  "module_entry": "src/app.js",
-  "stylesheet": "assets/styles/app.css",
-  "service_worker_version": "v11",
-  "cloud_sync_enabled": false
+  "release": "v12",
+  "basis": "Estoque-no-Bolso-v11-modular.zip",
+  "module_entry": "./src/app.js",
+  "stylesheet": "./assets/styles/app.css",
+  "all_local_paths_relative": true,
+  "file_protocol": "Shows a clear fallback because browser ES modules are blocked on file://; use INICIAR-LOCAL.bat",
+  "startup_timeout_fallback": true,
+  "indexeddb_read_write_timeouts": true,
+  "service_worker_version": "v12",
+  "missing_maskable_icon_added": true,
+  "cloud_sync_enabled": false,
+  "verification": {
+    "javascript_syntax": "passed (node --check on all modules and sw.js)",
+    "relative_path_audit": "passed (HTML links, ES module imports, manifest icons, Service Worker cache list)",
+    "subdirectory_http_checks": "passed (all required resources returned HTTP 200 under /v11-audit/ path simulation)",
+    "browser_visual_test": "not performed in this environment; verify in Chrome desktop and Android"
+  }
 }

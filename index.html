@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Estoque no Bolso</title>
-<!-- Release v11: modular JavaScript and IndexedDB foundation -->
+<!-- Release v12: robust startup fallback, relative paths, and modular IndexedDB foundation -->
 <meta name="description" content="Controle de estoque simples: entrada e saída, alerta de mínimo, lista de compras no WhatsApp e valor parado.">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#EDF0F4" id="themeColorMeta">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Estoque">
@@ -19,7 +19,23 @@
 <link rel="stylesheet" href="./assets/styles/app.css">
 </head>
 <body>
-<div class="app-startup" id="appStartup" role="status" aria-live="polite"><div class="app-startup-card"><div class="app-startup-mark" aria-hidden="true">E</div><strong>Estoque no Bolso</strong><span>Carregando seus dados...</span></div></div>
+<div class="app-startup" id="appStartup" role="status" aria-live="polite">
+  <div class="app-startup-card" id="appStartupLoading">
+    <img class="app-startup-logo" src="./icon-192.png" alt="Logo Estoque no Bolso" width="64" height="64">
+    <strong>Estoque no Bolso</strong>
+    <span>Carregando seus dados...</span>
+  </div>
+  <div class="app-startup-card app-startup-warning" id="appStartupWarning" role="alert" aria-live="assertive" hidden>
+    <img class="app-startup-logo" src="./icon-192.png" alt="Logo Estoque no Bolso" width="64" height="64">
+    <strong id="appStartupWarningTitle">Não foi possível iniciar o aplicativo</strong>
+    <p id="appStartupWarningText">O carregamento demorou mais que o esperado. Seus dados não foram apagados.</p>
+    <div class="app-startup-warning-actions">
+      <a class="btn primary" href="https://violekkj.github.io/Planilha/">Abrir versão online</a>
+      <button class="btn plain" type="button" id="localHelpToggle">Como abrir localmente</button>
+    </div>
+    <p class="app-startup-help" id="appStartupLocalHelp" hidden>O navegador bloqueia módulos JavaScript quando o HTML é aberto diretamente por file://. Na pasta do projeto, dê dois cliques em INICIAR-LOCAL.bat ou execute <code>py -m http.server 8000</code> e abra <code>http://localhost:8000</code>.</p>
+  </div>
+</div>
 <div class="col">
   <header class="top">
     <div class="top-row"><h1 id="title">Estoque no Bolso</h1><div class="top-btns"><button class="ghost" data-act="manual">Manual</button><button class="ghost backup-top-btn" data-act="backup" aria-label="Backup">Backup</button><button class="ghost" data-act="more">Mais</button></div></div>
@@ -50,13 +66,77 @@
 <div class="overlay" id="overlay" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <div id="confirmRoot"></div>
+<!-- Fallback clássico: funciona mesmo quando módulos ES são bloqueados em file://. -->
+<script>
+(function () {
+  'use strict';
+  var startup = document.getElementById('appStartup');
+  var loading = document.getElementById('appStartupLoading');
+  var warning = document.getElementById('appStartupWarning');
+  var title = document.getElementById('appStartupWarningTitle');
+  var message = document.getElementById('appStartupWarningText');
+  var help = document.getElementById('appStartupLocalHelp');
+  var helpButton = document.getElementById('localHelpToggle');
+  var fallbackTimer;
+
+  function showStartupWarning(kind) {
+    if (!startup || startup.hidden || !warning) return;
+    if (loading) loading.hidden = true;
+    warning.hidden = false;
+    if (kind === 'file') {
+      if (title) title.textContent = 'Abra o projeto por um servidor local';
+      if (message) message.textContent = 'O Chrome bloqueia módulos JavaScript quando o index.html é aberto diretamente pelo Explorer. Seus dados não foram alterados.';
+      if (help) help.hidden = false;
+      if (helpButton) helpButton.hidden = true;
+    } else if (kind === 'timeout') {
+      if (title) title.textContent = 'O aplicativo demorou para iniciar';
+      if (message) message.textContent = 'O carregamento não terminou. Verifique sua conexão e os arquivos do projeto. Seus dados locais não foram apagados.';
+    } else {
+      if (title) title.textContent = 'Não foi possível carregar os módulos';
+      if (message) message.textContent = 'Um arquivo JavaScript ou CSS não foi encontrado. Confira se a pasta src e a pasta assets foram enviadas junto com o index.html.';
+    }
+  }
+
+  if (helpButton) helpButton.addEventListener('click', function () {
+    if (help) help.hidden = !help.hidden;
+  });
+
+  if (window.location.protocol === 'file:') {
+    showStartupWarning('file');
+    return;
+  }
+
+  fallbackTimer = window.setTimeout(function () {
+    showStartupWarning('timeout');
+  }, 15000);
+
+  window.addEventListener('estoque:ready', function () {
+    if (fallbackTimer) window.clearTimeout(fallbackTimer);
+  });
+
+  window.addEventListener('error', function (event) {
+    if (startup && !startup.hidden && event && event.target && event.target.tagName === 'SCRIPT') {
+      showStartupWarning('module');
+    }
+  }, true);
+
+  window.addEventListener('unhandledrejection', function () {
+    if (startup && !startup.hidden) showStartupWarning('timeout');
+  });
+})();
+</script>
 <script type="module" src="./src/app.js"></script>
 <script>
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
-}
-
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
+  window.addEventListener('load', function () {
+    var workerUrl = new URL('./sw.js', document.baseURI);
+    navigator.serviceWorker.register(workerUrl.href).catch(function (error) {
+      console.warn('Service Worker não foi registrado. O app continua funcionando online.', error);
+    });
+  });
+})();
 </script>
 </body>
 </html>

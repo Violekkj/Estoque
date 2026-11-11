@@ -219,6 +219,18 @@ toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(148px + 
 .app-startup{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--fg)}
 .app-startup[hidden]{display:none!important}
 .app-startup-card{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 34px;box-shadow:var(--shadow)}
-.app-startup-mark{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:var(--accent);color:var(--on-accent);font-family:var(--f-num);font-size:25px;font-weight:700}
+.app-startup-logo{display:block;width:64px;height:64px;object-fit:contain;border-radius:16px}
 .app-startup-card strong{font-family:var(--f-num);font-size:18px}
 .app-startup-card span{font-size:13px;color:var(--muted)}
+.app-startup-warning{width:min(100%,420px);gap:14px}
+.app-startup-warning p{max-width:42ch;margin:0;color:var(--muted);font-size:13px;line-height:1.5;text-align:center}
+.app-startup-warning-actions{display:flex;flex-direction:column;gap:8px;width:100%}
+.app-startup-warning-actions .btn{width:100%;text-align:center}
+.app-startup-warning .app-startup-help{padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);text-align:left}
+.app-startup-warning .app-startup-help code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;overflow-wrap:anywhere}
+
+
+@media(max-width:420px){
+  .app-startup{padding:16px}
+  .app-startup-card{width:100%;max-width:420px;padding:24px 20px}
+}
