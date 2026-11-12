@@ -1,6 +1,6 @@
 // Service worker do Estoque no Bolso — v14.
 // Todos os caminhos são relativos ao diretório do próprio worker, compatíveis com /Estoque/.
-const VERSION = 'v14';
+const VERSION = 'v15';
 const CACHE = 'estoque-no-bolso-' + VERSION;
 
 const CORE = [

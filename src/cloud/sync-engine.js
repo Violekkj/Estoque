@@ -1,3 +1,4 @@
+
 // Motor local-first do Estoque no Bolso.
 // O IndexedDB guarda o snapshot e a fila na mesma transação; o Supabase é a
 // cópia central. Movimentações usam RPC transacional e operation_id idempotente.
@@ -32,12 +33,14 @@ function uuid() {
 
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
+
 function dateToTimestamp(date) {
   if (!date) return null;
   // Meio-dia local evita que uma data civil recue um dia ao serializar em UTC.
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
+
 function isoFromTimestamp(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -48,6 +51,7 @@ function isoFromTimestamp(value) {
   const pick = (type) => parts.find((part) => part.type === type)?.value;
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }
+
 function publishStatus(state, pending, message) {
   lastStatus = { state, pending: Number(pending) || 0, message: message || '' };
   if (typeof callbacks.onStatus === 'function') callbacks.onStatus(clone(lastStatus));
@@ -71,9 +75,11 @@ function comparableProduct(product) {
     lowSinceDate: product.lowSinceDate || null, lastPurchaseDate: product.lastPurchaseDate || null
   };
 }
+
 function sameProductMetadata(a, b) {
   return JSON.stringify(comparableProduct(a)) === JSON.stringify(comparableProduct(b));
 }
+
 function makeQueueItem(storeId, type, entityClientId, payload, operationId, order) {
   const stableId = operationId || uuid();
   return {
@@ -225,6 +231,84 @@ async function callRpc(name, params) {
   const { data, error } = await client.rpc(name, params);
   if (error) throw error;
   return data;
+}
+
+// Lista itens da lixeira do estabelecimento ativo.
+export async function listTrashItems() {
+  if (!activeStoreId || !authenticated) {
+    throw new Error('Conecte sua conta para acessar a lixeira.');
+  }
+
+  if (!navigator.onLine) {
+    throw new Error('Você precisa estar online para acessar a lixeira.');
+  }
+
+  const client = await getSupabaseClient();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+
+if (sessionError) throw sessionError;
+
+  if (!sessionData.session) {
+    authenticated = false;
+    throw new Error('Sua sessão expirou. Entre novamente na sua conta.');
+  }
+
+  const { data, error } = await client
+    .from('trash')
+    .select('id, entity_type, entity_id, snapshot, deleted_at, expires_at, restored_at, created_at')
+    .eq('store_id', activeStoreId)
+    .eq('entity_type', 'product')
+    .is('restored_at', null)
+    .order('deleted_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+// Restaura o registro original e atualiza o estado local pela sincronização.
+export async function restoreProductFromTrash(trashId) {
+  if (!activeStoreId || !authenticated) {
+    throw new Error('Conecte sua conta para restaurar produtos.');
+  }
+
+  if (!navigator.onLine) {
+    throw new Error('Você precisa estar online para restaurar produtos.');
+  }
+
+  if (!isUuid(trashId)) {
+    throw new Error('Identificador do item inválido.');
+  }
+
+  await callRpc('restore_product_from_trash', {
+    p_store_id: activeStoreId,
+    p_trash_id: trashId
+  });
+
+  // Atualiza a cópia local com o produto que acabou de ser reativado.
+  await pullAndApply();
+  return true;
+}
+
+export async function permanentlyDeleteProductFromTrash(trashId) {
+  if (!activeStoreId || !authenticated) {
+    throw new Error('Conecte sua conta para excluir produtos definitivamente.');
+  }
+
+  if (!navigator.onLine) {
+    throw new Error('Você precisa estar online para excluir produtos definitivamente.');
+  }
+
+  if (!isUuid(trashId)) {
+    throw new Error('Identificador do item inválido.');
+  }
+
+  await callRpc('permanently_delete_product_from_trash', {
+    p_store_id: activeStoreId,
+    p_trash_id: trashId
+  });
+
+  await pullAndApply();
+  return true;
 }
 
 async function upsertCloudProduct(storeId, product) {

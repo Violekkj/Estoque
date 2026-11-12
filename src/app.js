@@ -13,7 +13,8 @@ import {
 } from "./cloud/auth.js";
 import {
   buildSyncOperations, ensureStateOperationIds, initSyncEngine, connectStoreAndSync,
-  getActiveStoreId, getSyncStatus, scheduleSync, markSignedOut, refreshSyncStatus
+  getActiveStoreId, getSyncStatus, scheduleSync, markSignedOut, refreshSyncStatus,
+  listTrashItems, restoreProductFromTrash, permanentlyDeleteProductFromTrash
 } from "./cloud/sync-engine.js";
 
 'use strict';
@@ -287,8 +288,108 @@ function moreSheet(){
     '<div class="field"><label for="shopName">Nome do seu comércio</label><input type="text" id="shopName" maxlength="60" autocomplete="off" value="' + esc(state.shop) + '" placeholder="Aparece no pedido do WhatsApp"></div>' +
     '<div class="sec"><h3>Modo</h3><p>Escolha a aparência do Estoque no Bolso. Sua preferência fica salva neste celular.</p><button type="button" class="btn plain theme-mode-btn" id="themeToggle" data-act="toggle-theme">' + themeButtonContent() + '</button></div>' +
     '<div class="sec"><h3>Conta e nuvem</h3><p>Vincule este comércio a uma conta para preparar o acesso em outros dispositivos.</p><button type="button" class="btn plain" data-act="account">Conta e acesso</button></div>' +
+    '<div class="sec"><h3>Lixeira</h3><p>Veja os produtos excluídos e restaure os que ainda estão dentro do prazo de recuperação.</p><button type="button" class="btn plain" data-act="trash">Abrir lixeira</button></div>' +
     (state.demo ? '' : '<div class="sec"><h3>Dados de exemplo</h3><p>Veja o app preenchido com produtos de exemplo. Os seus dados ficam guardados e voltam quando você quiser.</p><button type="button" class="btn plain" data-act="show-demo">Ver dados de exemplo</button></div>') +
     '<div class="sec"><h3>Apagar tudo</h3><p>Remove produtos e histórico deste celular.</p><button type="button" class="danger" data-act="wipe">Apagar tudo</button></div>', null);
+}
+
+function trashSheet(){
+  openSheet('<div class="sheet-h"><h2>Lixeira</h2><button type="button" class="ghost" data-act="close">Fechar</button></div>' +
+    '<p class="sub">Os produtos excluídos ficam disponíveis para restauração por até 30 dias. O histórico de movimentações não é apagado.</p>' +
+    '<div id="trashContent"><div class="banner"><span>Carregando itens da lixeira...</span></div></div>', null);
+  refreshTrashSheet();
+}
+
+function renderTrashItems(items){
+  if (!items.length) {
+    return '<div class="empty"><b>Lixeira vazia</b>Quando você excluir um produto, ele aparecerá aqui para possível restauração.</div>';
+  }
+
+  return '<div class="list">' + items.map(function(item){
+    var snapshot = item.snapshot || {};
+    var product = snapshot.product || snapshot || {};
+    var name = product.name || 'Produto sem nome no registro';
+    var unit = product.unit || 'un';
+    var quantity = Number(product.qty);
+    var deletedAt = item.deleted_at || item.created_at;
+    var expiresAt = item.expires_at;
+    var expired = expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
+    var meta = [];
+    if (Number.isFinite(quantity)) meta.push('Quantidade: ' + fmtQty(quantity) + ' ' + unit);
+    if (Number.isFinite(Number(product.min))) meta.push('Mínimo: ' + fmtQty(product.min) + ' ' + unit);
+    var dates = '<div class="date-meta">' +
+      (deletedAt ? '<div>Excluído em: ' + esc(fmtDate(deletedAt)) + '</div>' : '') +
+      (expiresAt ? '<div>' + (expired ? 'Prazo encerrado em: ' : 'Disponível para restauração até: ') + esc(fmtDate(expiresAt)) + '</div>' : '') +
+      '</div>';
+    var action = expired
+      ? '<button type="button" class="btn plain" disabled>Prazo de restauração encerrado</button>'
+      : '<button type="button" class="btn primary" data-act="restore-trash" data-trash-id="' + esc(item.id) + '">Restaurar produto</button>';
+    var purgeAction = '<button type="button" class="danger" data-act="purge-trash" data-trash-id="' + esc(item.id) + '">Excluir definitivamente</button>';
+    return '<article class="card' + (expired ? ' low' : '') + '">' +
+      '<div class="c-top"><div class="c-name">' + esc(name) + '</div>' +
+      (expired ? '<span class="pill">Expirado</span>' : '') + '</div>' +
+      (meta.length ? '<div class="c-meta">' + meta.map(esc).join(' · ') + '</div>' : '') +
+      dates + action + purgeAction +
+      '</article>';
+  }).join('') + '</div>';
+}
+
+async function refreshTrashSheet(){
+  var root = $('trashContent');
+  if (!root) return;
+  root.innerHTML = '<div class="banner"><span>Carregando itens da lixeira...</span></div>';
+  try {
+    var items = await listTrashItems();
+    root = $('trashContent');
+    if (!root) return;
+    root.innerHTML = renderTrashItems(items);
+  } catch(error) {
+    root = $('trashContent');
+    if (!root) return;
+    root.innerHTML = '<div class="banner warn"><span>' + esc(error.message || 'Não foi possível carregar a lixeira.') + '</span></div>' +
+      '<button type="button" class="btn plain" data-act="trash-retry">Tentar novamente</button>';
+  }
+}
+
+async function restoreTrashProduct(trashId, button){
+  if (!trashId) return;
+  var confirmed = await appConfirm({
+    title: 'Restaurar produto?',
+    message: 'O produto voltará à lista com a quantidade e os dados originais. O histórico de movimentações será preservado.',
+    confirmText: 'Restaurar produto'
+  });
+  if (!confirmed) return;
+
+  if (button) button.disabled = true;
+  closeSheet();
+  try {
+    await restoreProductFromTrash(trashId);
+    toast('Produto restaurado com sucesso.');
+    trashSheet();
+  } catch(error) {
+    toast('Não foi possível restaurar: ' + (error.message || 'erro desconhecido'));
+    trashSheet();
+  }
+}
+
+async function permanentlyDeleteTrashProduct(trashId, button){
+  if (!trashId) return;
+  var confirmed = await appConfirm({
+    title: 'Excluir produto definitivamente?',
+    message: 'Esta ação não pode ser desfeita. O produto e o registro da Lixeira só serão removidos se não houver movimentações, estornos, itens de compras ou contagens de inventário vinculados. O histórico nunca será apagado.',
+    confirmText: 'Excluir definitivamente'
+  });
+  if (!confirmed) return;
+
+  if (button) button.disabled = true;
+  try {
+    await permanentlyDeleteProductFromTrash(trashId);
+    toast('Produto excluído definitivamente.');
+    await refreshTrashSheet();
+  } catch(error) {
+    toast('Não foi possível excluir definitivamente: ' + (error.message || 'erro desconhecido'));
+    await refreshTrashSheet();
+  }
 }
 
 function accountSheet(){
@@ -734,6 +835,10 @@ document.addEventListener('click', function(e){
   else if (act === 'mov') movSheet(find(el.dataset.id), el.dataset.kind);
   else if (act === 'delete-history') deleteHistoryEntry(el.dataset.eventId);
   else if (act === 'more') { wipeArmed = false; moreSheet(); }
+  else if (act === 'trash') trashSheet();
+  else if (act === 'trash-retry') refreshTrashSheet();
+  else if (act === 'restore-trash') restoreTrashProduct(el.dataset.trashId, el);
+  else if (act === 'purge-trash') permanentlyDeleteTrashProduct(el.dataset.trashId, el);
   else if (act === 'account') accountSheet();
   else if (act === 'backup') backupSheet();
   else if (act === 'toggle-theme') { applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark', true); var themeToggle = $('themeToggle'); if (themeToggle) themeToggle.innerHTML = themeButtonContent(); }
